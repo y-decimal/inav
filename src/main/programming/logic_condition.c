@@ -471,6 +471,12 @@ static int logicConditionCompute(
             return true;
             break;
 
+        case LOGIC_CONDITION_SET_FW_LEVEL_TRIM:
+            logicConditionValuesByType[LOGIC_CONDITION_SET_FW_LEVEL_TRIM] = constrain(operandA, SETTING_FW_LEVEL_PITCH_TRIM_MIN, SETTING_FW_LEVEL_PITCH_TRIM_MAX);
+            pidProfileMutable()->fixedWingLevelTrim = logicConditionValuesByType[LOGIC_CONDITION_SET_FW_LEVEL_TRIM];
+            return logicConditionValuesByType[LOGIC_CONDITION_SET_FW_LEVEL_TRIM];
+            break;
+
         case LOGIC_CONDITION_FLIGHT_AXIS_ANGLE_OVERRIDE:
             if (operandA >= 0 && operandA <= 2) {
 
@@ -948,6 +954,11 @@ case LOGIC_CONDITION_OPERAND_FLIGHT_LQ_DOWNLINK:
         case LOGIC_CONDITION_OPERAND_FLIGHT_RANGEFINDER_RAW:
             return rangefinderGetLatestRawAltitude();
             break;
+
+        case LOGIC_CONDITION_OPERAND_FLIGHT_FW_LEVEL_TRIM:
+            return getFixedWingLevelTrim();
+            break;
+
 #ifdef USE_FW_AUTOLAND
         case LOGIC_CONDITION_OPERAND_FLIGHT_FW_LAND_STATE:
             return posControl.fwLandState.landState;

@@ -86,6 +86,7 @@ typedef enum {
     LOGIC_CONDITION_RESET_MAG_CALIBRATION       = 54,
     LOGIC_CONDITION_SET_GIMBAL_SENSITIVITY      = 55,
     LOGIC_CONDITION_OVERRIDE_MIN_GROUND_SPEED   = 56,
+    LOGIC_CONDITION_SET_FW_LEVEL_TRIM           = 57,
     LOGIC_CONDITION_LAST
 } logicOperation_e;
 
@@ -152,6 +153,7 @@ typedef enum {
     LOGIC_CONDITION_OPERAND_FLIGHT_HORIZONTAL_WIND_SPEED, // cm/s           // 47
     LOGIC_CONDITION_OPERAND_FLIGHT_WIND_DIRECTION, // deg                   // 48
     LOGIC_CONDITION_OPERAND_FLIGHT_RELATIVE_WIND_OFFSET, // deg             // 49
+    LOGIC_CONDITION_OPERAND_FLIGHT_FW_LEVEL_TRIM, // deg                    // 50
 } logicFlightOperands_e;
 
 typedef enum {
