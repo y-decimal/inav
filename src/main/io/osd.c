@@ -191,6 +191,20 @@ typedef struct statistic_s {
     int32_t flightStartMWh;
 } statistic_t;
 
+// Welford-style exponentially-weighted incremental linear regression state.
+// Replaces a fixed-size sample buffer (up to 1920 bytes) with ~16 bytes of
+// static state and no heap allocation. See updateGlideRatioRegression().
+static float glideMeanDistance = 0.0f;
+static float glideMeanAltitude = 0.0f;
+static float glideVarDistance = 0.0f;
+static float glideCovDistAlt = 0.0f;
+static uint16_t glideSampleCount = 0;
+
+// Calculated glide ratio (distance per unit altitude descent)
+// Available for use by multiple OSD elements
+static float currentGlideRatio = 0.0f;
+static bool useGlideElement = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
+
 static statistic_t stats;
 
 static timeUs_t resumeRefreshAt = 0;
@@ -1308,21 +1322,16 @@ static inline int32_t osdGetAltitudeMsl(void)
 }
 
 uint16_t osdGetRemainingGlideTime(void) {
-    float value = getEstimatedActualVelocity(Z);
-    static pt1Filter_t glideTimeFilterState;
-    const  timeMs_t curTimeMs = millis();
-    static timeMs_t glideTimeUpdatedMs;
-
-    value = pt1FilterApply4(&glideTimeFilterState, isnormal(value) ? value : 0, 0.5, MS2S(curTimeMs - glideTimeUpdatedMs));
-    glideTimeUpdatedMs = curTimeMs;
-
-    if (value < 0) {
-        value = osdGetAltitude() / abs((int)value);
-    } else {
-        value = 0;
+    // Use glide ratio if available and valid
+    uint16_t glideTime = 0;
+    if (currentGlideRatio > 0.0f) {
+        int32_t altitude = osdGetAltitude();
+        int16_t groundSpeed = gpsSol.groundSpeed;
+        if (altitude > 0 && groundSpeed > 0) {
+           glideTime = (uint16_t)((float)altitude * currentGlideRatio / groundSpeed);
+        }
     }
-
-    return (uint16_t)roundf(value);
+    return glideTime;
 }
 
 static bool osdIsHeadingValid(void)
@@ -1828,6 +1837,119 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
     return elementEnabled;
 }
 
+static bool isDataValidForGlideRatio(void) {
+    // Check if we have been ascending for more than 4 seconds, which would indicate that the glide ratio is not valid
+    static timeMs_t lastDescentTime = 0;
+    if (getEstimatedActualVelocity(Z) < 0) {  // Descending
+        lastDescentTime = millis();
+    } else if (millis() - lastDescentTime > 4000) {  // Not descending for more than 4 seconds
+        return false;
+    }
+
+    // Check if the throttle is above a certain threshold, which would indicate that we are under power and the glide ratio is not valid
+    if (getThrottlePercent(true) > 10) { 
+        return false;
+    }
+
+    return true;
+}
+
+
+// Reset the incremental regression state, e.g. when conditions become invalid
+static void resetGlideRatioState(void) {
+    glideMeanDistance = 0.0f;
+    glideMeanAltitude = 0.0f;
+    glideVarDistance = 0.0f;
+    glideCovDistAlt = 0.0f;
+    glideSampleCount = 0;
+    currentGlideRatio = 0.0f;
+}
+
+// Welford-style exponentially-weighted incremental linear regression.
+// Folds one new (distance, altitude) sample into the running mean/variance/
+// covariance with decay factor `alpha`, then derives the glide ratio from
+// the regression slope (covXY / varX) -- without ever storing or squaring
+// the raw (and unboundedly growing) distance_cm value, which avoids the
+// catastrophic-cancellation issue of the Sum(x^2) formula it replaces.
+static void updateGlideRatioRegression(float distance_cm, float altitude_cm, float alpha)
+{
+    float dx = distance_cm - glideMeanDistance;
+    float dy = altitude_cm - glideMeanAltitude;
+
+    glideMeanDistance += alpha * dx;
+    glideMeanAltitude += alpha * dy;
+
+    glideVarDistance = (1.0f - alpha) * (glideVarDistance + alpha * dx * dx);
+    glideCovDistAlt  = (1.0f - alpha) * (glideCovDistAlt  + alpha * dx * dy);
+
+    if (glideSampleCount < UINT16_MAX) {
+        glideSampleCount++;
+    }
+
+    // Avoid division by zero or degenerate cases (not enough variation in distance)
+    if (glideVarDistance < 1e-6f) {
+        currentGlideRatio = 0.0f;
+        return;
+    }
+
+    float slope = glideCovDistAlt / glideVarDistance;  // altitude_change / distance_change
+
+    // For descent, slope should be negative
+    if (slope >= 0.0f) {
+        currentGlideRatio = 0.0f;  // Not descending
+        return;
+    }
+
+    // Glide ratio = distance / |altitude_change| = 1 / |slope|
+    float glideRatio = -1.0f / slope;
+
+    // Sanity check: reasonable glide ratios are 1-100
+    currentGlideRatio = (glideRatio > 0.1f && glideRatio < 100.0f) ? glideRatio : 0.0f;
+}
+
+// Update glide ratio calculation
+// Called regularly to maintain the glide ratio estimate regardless of OSD element visibility
+// This ensures glide ratio is available for all OSD elements that need it
+static void updateGlideRatioCalculation(void) {
+    uint8_t sampleRate = osdConfig()->glide_sample_rate > 0 ? osdConfig()->glide_sample_rate : 1;  // Default to 1 sample/sec if misconfigured
+    uint8_t timeFrame = osdConfig()->glide_sample_time_frame > 0 ? osdConfig()->glide_sample_time_frame : 5;  // Default to 5 seconds if misconfigured
+    const uint16_t minimumSampleCount = (sampleRate * timeFrame) / 4;
+
+    static timeMs_t glideLastSampleTime = 0;
+    const timeMs_t currentTime = millis();
+    const uint16_t sampleIntervalMs = 1000 / sampleRate;
+
+    if (currentTime - glideLastSampleTime < sampleIntervalMs) {
+        return;
+    }
+    glideLastSampleTime = currentTime;
+
+    if (!isDataValidForGlideRatio()) {
+        // Conditions not valid for glide ratio, reset regression state
+        resetGlideRatioState();
+        return;
+    }
+
+    // Decay factor: a new sample contributes `alpha` of its weight to the
+    // running mean/variance, giving an effective averaging window of
+    // roughly 1/alpha samples -- the EWMA equivalent of the old fixed-size
+    // sample buffer, but with O(1) memory and no resampling on resize.
+    float alpha = (float)sampleIntervalMs / 1000.0f / (float)timeFrame;
+
+    updateGlideRatioRegression((float)getTotalTravelDistance(), (float)osdGetAltitude(), alpha);
+
+    if (glideSampleCount < minimumSampleCount) {
+        currentGlideRatio = 0.0f;  // Not enough samples yet
+    }
+}
+
+static void enableGlideRatioCalculation(void) {
+    if (!useGlideElement) {
+        useGlideElement = true;
+        updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
+    }
+}
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     uint16_t pos = osdLayoutsConfig()->item_pos[currentLayout][item];
@@ -2065,18 +2187,10 @@ static bool osdDrawSingleElement(uint8_t item)
 
     case OSD_GLIDESLOPE:
         {
-            float horizontalSpeed = gpsSol.groundSpeed;
-            float sinkRate = -getEstimatedActualVelocity(Z);
-            static pt1Filter_t gsFilterState;
-            const timeMs_t currentTimeMs = millis();
-            static timeMs_t gsUpdatedTimeMs;
-            float glideSlope = horizontalSpeed / sinkRate;
-            glideSlope = pt1FilterApply4(&gsFilterState, isnormal(glideSlope) ? glideSlope : 200, 0.5, MS2S(currentTimeMs - gsUpdatedTimeMs));
-            gsUpdatedTimeMs = currentTimeMs;
-
+            enableGlideRatioCalculation();  // Ensure glide ratio calculation is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (glideSlope > 0.0f && glideSlope < 100.0f) {
-                osdFormatCentiNumber(buff + 1, glideSlope * 100.0f, 0, 2, 0, 3, false);
+            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f) {
+                osdFormatCentiNumber(buff + 1, currentGlideRatio * 100.0f, 0, 2, 0, 3, false);
             } else {
                 buff[1] = buff[2] = buff[3] = '-';
             }
@@ -3157,6 +3271,7 @@ static bool osdDrawSingleElement(uint8_t item)
         }
     case OSD_GLIDE_TIME_REMAINING:
         {
+            enableGlideRatioCalculation();
             uint16_t glideTime = osdGetRemainingGlideTime();
             buff[0] = SYM_GLIDE_MINS;
             if (glideTime > 0) {
@@ -3177,14 +3292,18 @@ static bool osdDrawSingleElement(uint8_t item)
         }
     case OSD_GLIDE_RANGE:
         {
-            uint16_t glideSeconds = osdGetRemainingGlideTime();
+            enableGlideRatioCalculation();
+            int32_t altitude = osdGetAltitude();
             buff[0] = SYM_GLIDE_DIST;
-            if (glideSeconds > 0) {
-                uint32_t glideRangeCM = glideSeconds * gpsSol.groundSpeed;
-                osdFormatDistanceSymbol(buff + 1, glideRangeCM, 0, 3);
-            } else {
+            if (currentGlideRatio <= 0.0f || altitude <= 0) {
                 tfp_sprintf(buff + 1, "%s%c", "---", SYM_BLANK);
                 buff[5] = '\0';
+                break;
+            }
+            else
+            {
+                int32_t glideRangeCm = (int32_t)(currentGlideRatio * altitude);
+                osdFormatDistanceSymbol(buff + 1, glideRangeCm, 0, 3);
             }
             break;
         }
@@ -4412,7 +4531,9 @@ PG_RESET_TEMPLATE(osdConfig_t, osdConfig,
     .stats_page_auto_swap_time = SETTING_OSD_STATS_PAGE_AUTO_SWAP_TIME_DEFAULT,
     .stats_show_metric_efficiency = SETTING_OSD_STATS_SHOW_METRIC_EFFICIENCY_DEFAULT,
 
-    .radar_peers_display_time = SETTING_OSD_RADAR_PEERS_DISPLAY_TIME_DEFAULT
+    .radar_peers_display_time = SETTING_OSD_RADAR_PEERS_DISPLAY_TIME_DEFAULT,
+    .glide_sample_rate = SETTING_OSD_GLIDE_SAMPLE_RATE_DEFAULT,
+    .glide_sample_time_frame = SETTING_OSD_GLIDE_SAMPLE_TIME_FRAME_DEFAULT
 );
 
 void pgResetFn_osdLayoutsConfig(osdLayoutsConfig_t *osdLayoutsConfig)
@@ -5860,6 +5981,10 @@ static bool osdIsPageDownStickCommandHeld(void)
 static void osdRefresh(timeUs_t currentTimeUs)
 {
     osdFilterData(currentTimeUs);
+    
+    if (useGlideElement) {
+        updateGlideRatioCalculation();
+    }
 
 #ifdef USE_CMS
     if (IS_RC_MODE_ACTIVE(BOXOSD) && (!cmsInMenu) && !(osdConfig()->osd_failsafe_switch_layout && FLIGHT_MODE(FAILSAFE_MODE))) {
@@ -6471,6 +6596,7 @@ void osdEraseCustomItem(uint8_t item){
     }
 
 }
+
 
 #endif // OSD
 
