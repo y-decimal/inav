@@ -191,18 +191,14 @@ typedef struct statistic_s {
     int32_t flightStartMWh;
 } statistic_t;
 
-#define MAX_GLIDE_BUFFER_SIZE 240  // Maximum samples: 4 Hz * 60 seconds
-
-typedef struct glidePositionSample_s {
-    uint32_t distance_cm;    // Total travel distance
-    int32_t altitude_cm;     // Altitude
-} glidePositionSample_t;
-
-
-// Lazy-allocated glide buffer
-static glidePositionSample_t *glideBuffer = NULL;
-static uint16_t glideBufferAllocatedSize = 0;
-static uint16_t glideBufferCurrentSize = 0;
+// Welford-style exponentially-weighted incremental linear regression state.
+// Replaces a fixed-size sample buffer (up to 1920 bytes) with ~16 bytes of
+// static state and no heap allocation. See updateGlideRatioRegression().
+static float glideMeanDistance = 0.0f;
+static float glideMeanAltitude = 0.0f;
+static float glideVarDistance = 0.0f;
+static float glideCovDistAlt = 0.0f;
+static uint16_t glideSampleCount = 0;
 
 // Calculated glide ratio (distance per unit altitude descent)
 // Available for use by multiple OSD elements
@@ -1841,45 +1837,6 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
     return elementEnabled;
 }
 
-// Manage lazy allocation and reallocation of glide buffer
-// Returns the current buffer size, or 0 if allocation failed
-static uint16_t ensureGlideBufferAllocated(uint16_t requiredSize)
-{
-    // Clamp to maximum size
-    if (requiredSize > MAX_GLIDE_BUFFER_SIZE) {
-        requiredSize = MAX_GLIDE_BUFFER_SIZE;
-    }
-
-    if (requiredSize == 0) {
-        // Free buffer if no longer needed
-        free(glideBuffer);
-        glideBuffer = NULL;
-        glideBufferAllocatedSize = 0;
-        glideBufferCurrentSize = 0;
-        return 0;
-    }
-    
-    // If already allocated with correct size, return it
-    if (glideBuffer != NULL && glideBufferAllocatedSize == requiredSize) {
-        return requiredSize;
-    }
-    
-    // Need to allocate or reallocate
-    glidePositionSample_t *newBuffer = (glidePositionSample_t *)realloc(glideBuffer, requiredSize * sizeof(glidePositionSample_t));
-    
-    if (newBuffer == NULL) {
-        return 0;  // Allocation failed, keep old buffer
-    }
-    
-    glideBuffer = newBuffer;
-    glideBufferAllocatedSize = requiredSize;
-    
-    // Reset sample tracking when buffer changes size
-    glideBufferCurrentSize = 0;
-    
-    return requiredSize;
-}
-
 static bool isDataValidForGlideRatio(void) {
     // Check if we have been ascending for more than 4 seconds, which would indicate that the glide ratio is not valid
     static timeMs_t lastDescentTime = 0;
@@ -1898,120 +1855,91 @@ static bool isDataValidForGlideRatio(void) {
 }
 
 
-// Linear regression: calculate glide ratio from position samples
-// Returns glide ratio (horizontal distance per 1 unit vertical descent)
-// Returns 0 if insufficient data or invalid conditions
-static float calculateGlideRatioFromBuffer(const glidePositionSample_t *buffer, uint8_t sampleCount)
+// Reset the incremental regression state, e.g. when conditions become invalid
+static void resetGlideRatioState(void) {
+    glideMeanDistance = 0.0f;
+    glideMeanAltitude = 0.0f;
+    glideVarDistance = 0.0f;
+    glideCovDistAlt = 0.0f;
+    glideSampleCount = 0;
+    currentGlideRatio = 0.0f;
+}
+
+// Welford-style exponentially-weighted incremental linear regression.
+// Folds one new (distance, altitude) sample into the running mean/variance/
+// covariance with decay factor `alpha`, then derives the glide ratio from
+// the regression slope (covXY / varX) -- without ever storing or squaring
+// the raw (and unboundedly growing) distance_cm value, which avoids the
+// catastrophic-cancellation issue of the Sum(x^2) formula it replaces.
+static void updateGlideRatioRegression(float distance_cm, float altitude_cm, float alpha)
 {
-    // Least-squares linear regression: y = mx + b
-    // where x = horizontal distance, y = altitude
-    // We need: sumX, sumY, sumX², sumXY, and n (sample count)
-    
-    float sumX = 0.0f;      // sum of distances
-    float sumY = 0.0f;      // sum of altitudes  
-    float sumXY = 0.0f;     // sum of (distance * altitude)
-    float sumX2 = 0.0f;     // sum of (distance²)
-    
-    for (uint8_t i = 0; i < sampleCount; i++) {
-        float x = (float)buffer[i].distance_cm;
-        float y = (float)buffer[i].altitude_cm;
-        
-        sumX += x;
-        sumY += y;
-        sumXY += x * y;
-        sumX2 += x * x;
+    float dx = distance_cm - glideMeanDistance;
+    float dy = altitude_cm - glideMeanAltitude;
+
+    glideMeanDistance += alpha * dx;
+    glideMeanAltitude += alpha * dy;
+
+    glideVarDistance = (1.0f - alpha) * (glideVarDistance + alpha * dx * dx);
+    glideCovDistAlt  = (1.0f - alpha) * (glideCovDistAlt  + alpha * dx * dy);
+
+    if (glideSampleCount < UINT16_MAX) {
+        glideSampleCount++;
     }
-    
-    // Slope formula: m = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
-    float n = (float)sampleCount;
-    float numerator = n * sumXY - sumX * sumY;
-    float denominator = n * sumX2 - sumX * sumX;
-    
-    // Avoid division by zero or degenerate cases
-    if (fabsf(denominator) < 1e-6f) {
-        return 0.0f;  // Not enough variation in distance
+
+    // Avoid division by zero or degenerate cases (not enough variation in distance)
+    if (glideVarDistance < 1e-6f) {
+        currentGlideRatio = 0.0f;
+        return;
     }
-    
-    float slope = numerator / denominator;  // altitude_change / distance_change
-    
+
+    float slope = glideCovDistAlt / glideVarDistance;  // altitude_change / distance_change
+
     // For descent, slope should be negative
     if (slope >= 0.0f) {
-        return 0.0f;  // Not descending
+        currentGlideRatio = 0.0f;  // Not descending
+        return;
     }
-    
+
     // Glide ratio = distance / |altitude_change| = 1 / |slope|
     float glideRatio = -1.0f / slope;
-    
+
     // Sanity check: reasonable glide ratios are 1-100
-    if (glideRatio > 0.1f && glideRatio < 100.0f) {
-        return glideRatio;
-    }
-    
-    return 0.0f;  // Out of reasonable range
+    currentGlideRatio = (glideRatio > 0.1f && glideRatio < 100.0f) ? glideRatio : 0.0f;
 }
 
 // Update glide ratio calculation
-// Called regularly to maintain glide ratio buffer regardless of OSD element visibility
+// Called regularly to maintain the glide ratio estimate regardless of OSD element visibility
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
     uint8_t sampleRate = osdConfig()->glide_sample_rate > 0 ? osdConfig()->glide_sample_rate : 1;  // Default to 1 sample/sec if misconfigured
     uint8_t timeFrame = osdConfig()->glide_sample_time_frame > 0 ? osdConfig()->glide_sample_time_frame : 5;  // Default to 5 seconds if misconfigured
-    const uint16_t requiredBufferSize = sampleRate * timeFrame;
-    const uint8_t minimumSampleCount = requiredBufferSize / 4;
-    
-    static uint16_t previousBufferSize = 0;
-    uint16_t bufferSize = ensureGlideBufferAllocated(requiredBufferSize);
-    
-    if (bufferSize == 0) {
-        // Allocation failed
-        currentGlideRatio = 0.0f;
-        return;
-    }
-    
-    static uint8_t glideBufferIndex = 0;
+    const uint16_t minimumSampleCount = (sampleRate * timeFrame) / 4;
+
     static timeMs_t glideLastSampleTime = 0;
-    static uint8_t samplesSinceLastClear = 0;
     const timeMs_t currentTime = millis();
     const uint16_t sampleIntervalMs = 1000 / sampleRate;
 
-    // Reset sampling state if buffer size changed
-    if (bufferSize != previousBufferSize) {
-        previousBufferSize = bufferSize;
-        glideBufferIndex = 0;
-        samplesSinceLastClear = 0;
-        glideLastSampleTime = 0;  // Reset to take sample immediately after resize
+    if (currentTime - glideLastSampleTime < sampleIntervalMs) {
+        return;
+    }
+    glideLastSampleTime = currentTime;
+
+    if (!isDataValidForGlideRatio()) {
+        // Conditions not valid for glide ratio, reset regression state
+        resetGlideRatioState();
+        return;
     }
 
-    if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
-        // Record a new sample
-        glideLastSampleTime = currentTime;
-        if (!isDataValidForGlideRatio()) {
-            // Conditions not valid for glide ratio, reset buffer
-            for (uint16_t i = 0; i < bufferSize; i++) {
-                glideBuffer[i].distance_cm = 0;
-                glideBuffer[i].altitude_cm = 0;
-            }
-            currentGlideRatio = 0.0f;
-            samplesSinceLastClear = 0;
-            glideBufferIndex = 0;
-        }
-        else {
-            glideBuffer[glideBufferIndex].distance_cm = getTotalTravelDistance();
-            glideBuffer[glideBufferIndex].altitude_cm = osdGetAltitude();
-            glideBufferIndex = (glideBufferIndex + 1) % bufferSize;
+    // Decay factor: a new sample contributes `alpha` of its weight to the
+    // running mean/variance, giving an effective averaging window of
+    // roughly 1/alpha samples -- the EWMA equivalent of the old fixed-size
+    // sample buffer, but with O(1) memory and no resampling on resize.
+    float alpha = (float)sampleIntervalMs / 1000.0f / (float)timeFrame;
 
-            if (samplesSinceLastClear < bufferSize) {
-                samplesSinceLastClear++;
-            }
+    updateGlideRatioRegression((float)getTotalTravelDistance(), (float)osdGetAltitude(), alpha);
 
-            if (samplesSinceLastClear >= minimumSampleCount) {
-                // Calculate glide ratio using only the valid samples collected
-                currentGlideRatio = calculateGlideRatioFromBuffer(glideBuffer, samplesSinceLastClear);
-            }
-            else {
-                currentGlideRatio = 0.0f;  // Not enough samples yet
-            }
-        }
+    if (glideSampleCount < minimumSampleCount) {
+        currentGlideRatio = 0.0f;  // Not enough samples yet
     }
 }
 
