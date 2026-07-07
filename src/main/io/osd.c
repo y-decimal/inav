@@ -191,7 +191,7 @@ typedef struct statistic_s {
     int32_t flightStartMWh;
 } statistic_t;
 
-#define MAX_GLIDE_BUFFER_SIZE 240  // Maximum samples: 4 Hz * 60 seconds
+#define MAX_GLIDE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -199,10 +199,8 @@ typedef struct glidePositionSample_s {
 } glidePositionSample_t;
 
 
-// Lazy-allocated glide buffer
-static glidePositionSample_t *glideBuffer = NULL;
-static uint16_t glideBufferAllocatedSize = 0;
-static uint16_t glideBufferCurrentSize = 0;
+// Fixed-size glide buffer
+static glidePositionSample_t glideBuffer[MAX_GLIDE_BUFFER_SIZE];
 
 // Calculated glide ratio (distance per unit altitude descent)
 // Available for use by multiple OSD elements
@@ -1841,45 +1839,6 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
     return elementEnabled;
 }
 
-// Manage lazy allocation and reallocation of glide buffer
-// Returns the current buffer size, or 0 if allocation failed
-static uint16_t ensureGlideBufferAllocated(uint16_t requiredSize)
-{
-    // Clamp to maximum size
-    if (requiredSize > MAX_GLIDE_BUFFER_SIZE) {
-        requiredSize = MAX_GLIDE_BUFFER_SIZE;
-    }
-
-    if (requiredSize == 0) {
-        // Free buffer if no longer needed
-        free(glideBuffer);
-        glideBuffer = NULL;
-        glideBufferAllocatedSize = 0;
-        glideBufferCurrentSize = 0;
-        return 0;
-    }
-    
-    // If already allocated with correct size, return it
-    if (glideBuffer != NULL && glideBufferAllocatedSize == requiredSize) {
-        return requiredSize;
-    }
-    
-    // Need to allocate or reallocate
-    glidePositionSample_t *newBuffer = (glidePositionSample_t *)realloc(glideBuffer, requiredSize * sizeof(glidePositionSample_t));
-    
-    if (newBuffer == NULL) {
-        return 0;  // Allocation failed, keep old buffer
-    }
-    
-    glideBuffer = newBuffer;
-    glideBufferAllocatedSize = requiredSize;
-    
-    // Reset sample tracking when buffer changes size
-    glideBufferCurrentSize = 0;
-    
-    return requiredSize;
-}
-
 static bool isDataValidForGlideRatio(void) {
     // Check if we have been ascending for more than 4 seconds, which would indicate that the glide ratio is not valid
     static timeMs_t lastDescentTime = 0;
@@ -1954,33 +1913,15 @@ static float calculateGlideRatioFromBuffer(const glidePositionSample_t *buffer, 
 // Called regularly to maintain glide ratio buffer regardless of OSD element visibility
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
-    uint8_t sampleRate = osdConfig()->glide_sample_rate > 0 ? osdConfig()->glide_sample_rate : 1;  // Default to 1 sample/sec if misconfigured
     uint8_t timeFrame = osdConfig()->glide_sample_time_frame > 0 ? osdConfig()->glide_sample_time_frame : 5;  // Default to 5 seconds if misconfigured
-    const uint16_t requiredBufferSize = sampleRate * timeFrame;
-    const uint8_t minimumSampleCount = requiredBufferSize / 4;
-    
-    static uint16_t previousBufferSize = 0;
-    uint16_t bufferSize = ensureGlideBufferAllocated(requiredBufferSize);
-    
-    if (bufferSize == 0) {
-        // Allocation failed
-        currentGlideRatio = 0.0f;
-        return;
-    }
-    
+    const uint16_t bufferSize = MAX_GLIDE_BUFFER_SIZE;
+    const uint8_t minimumSampleCount = bufferSize / 4;
+
     static uint8_t glideBufferIndex = 0;
     static timeMs_t glideLastSampleTime = 0;
     static uint8_t samplesSinceLastClear = 0;
     const timeMs_t currentTime = millis();
-    const uint16_t sampleIntervalMs = 1000 / sampleRate;
-
-    // Reset sampling state if buffer size changed
-    if (bufferSize != previousBufferSize) {
-        previousBufferSize = bufferSize;
-        glideBufferIndex = 0;
-        samplesSinceLastClear = 0;
-        glideLastSampleTime = 0;  // Reset to take sample immediately after resize
-    }
+    const uint16_t sampleIntervalMs = (uint16_t)(((uint32_t)timeFrame * 1000U) / bufferSize);
 
     if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
         // Record a new sample
@@ -4604,7 +4545,6 @@ PG_RESET_TEMPLATE(osdConfig_t, osdConfig,
     .stats_show_metric_efficiency = SETTING_OSD_STATS_SHOW_METRIC_EFFICIENCY_DEFAULT,
 
     .radar_peers_display_time = SETTING_OSD_RADAR_PEERS_DISPLAY_TIME_DEFAULT,
-    .glide_sample_rate = SETTING_OSD_GLIDE_SAMPLE_RATE_DEFAULT,
     .glide_sample_time_frame = SETTING_OSD_GLIDE_SAMPLE_TIME_FRAME_DEFAULT
 );
 

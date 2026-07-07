@@ -542,7 +542,6 @@ typedef struct osdConfig_s {
     uint8_t geozoneDistanceWarning;                     // Distance to fence or action
     bool geozoneDistanceType;                            // Shows a countdown timer or distance to fence/action
 #endif
-    uint8_t  glide_sample_rate;                         // Glide slope sampling rate in Hz (default 2)
     uint8_t  glide_sample_time_frame;                   // Glide slope sampling time frame in seconds (default 10)
 } osdConfig_t;
 

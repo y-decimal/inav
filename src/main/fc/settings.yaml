@@ -3904,15 +3904,8 @@ groups:
         field: osd_switch_indicators_align_left
         type: bool
         default_value: ON
-      - name: osd_glide_sample_rate
-        description: "Glide slope sampling rate in Hz (1-4 Hz). Higher rates give more responsive glide slope calculations but use more CPU."
-        field: glide_sample_rate
-        type: uint8_t
-        min: 1
-        max: 4
-        default_value: 2
       - name: osd_glide_sample_time_frame
-        description: "Glide slope sampling time frame in seconds (5-60 seconds). Longer frames provide more stable glide slope estimates."
+        description: "Glide slope sampling time frame in seconds (5-60 seconds). The update rate is derived from this value and the fixed 60-sample buffer."
         field: glide_sample_time_frame
         type: uint8_t
         min: 5
