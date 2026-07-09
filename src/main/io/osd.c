@@ -1936,14 +1936,8 @@ static void updateGlideRatioCalculation(void) {
         // Record a new sample
         glideLastSampleTime = currentTime;
         if (!isDataValidForGlideRatio()) {
-            // Conditions not valid for glide ratio, reset buffer
-            for (uint16_t i = 0; i < GLIDE_BUFFER_SIZE; i++) {
-                glideBuffer[i].distance_cm = 0;
-                glideBuffer[i].altitude_cm = 0;
-            }
-            currentGlideRatio = 0.0f;
-            samplesSinceLastClear = 0;
-            glideBufferIndex = 0;
+            // Conditions not valid for glide ratio, skip sampling
+            return;
         }
         else {
             glideBuffer[glideBufferIndex].distance_cm = getTotalTravelDistance();
@@ -2215,7 +2209,7 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlideRatioCalculation();  // Ensure glide ratio calculation is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f) {
+            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidForGlideRatio()) {
                 osdFormatCentiNumber(buff + 1, currentGlideRatio * 100.0f, 0, 2, 0, 3, false);
             } else {
                 buff[1] = buff[2] = buff[3] = '-';
@@ -3300,7 +3294,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             uint16_t glideTime = osdGetRemainingGlideTime();
             buff[0] = SYM_GLIDE_MINS;
-            if (glideTime > 0) {
+            if (glideTime > 0 && isDataValidForGlideRatio()) {
                 // Maximum value we can show in minutes is 99 minutes and 59 seconds. It is extremely unlikely that glide
                 // time will be longer than 99 minutes. If it is, it will show 99:^^
                 if (glideTime > (99 * 60) + 59) {
@@ -3321,7 +3315,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             int32_t altitude = osdGetAltitude();
             buff[0] = SYM_GLIDE_DIST;
-            if (currentGlideRatio <= 0.0f || altitude <= 0) {
+            if (currentGlideRatio <= 0.0f || altitude <= 0 || !isDataValidForGlideRatio()) {
                 tfp_sprintf(buff + 1, "%s%c", "---", SYM_BLANK);
                 buff[5] = '\0';
                 break;
