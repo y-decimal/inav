@@ -1860,29 +1860,35 @@ static bool isDataValidForGlideRatio(void) {
 // Linear regression: calculate glide ratio from position samples
 // Returns glide ratio (horizontal distance per 1 unit vertical descent)
 // Returns 0 if insufficient data or invalid conditions
-static float calculateGlideRatioFromBuffer(const glidePositionSample_t *buffer, uint8_t sampleCount)
+static float calculateGlideRatioFromSample(uint8_t bufferIndex, uint8_t bufferWindowSize)
 {
     // Least-squares linear regression: y = mx + b
     // where x = horizontal distance, y = altitude
     // We need: sumX, sumY, sumX², sumXY, and n (sample count)
     
-    float sumX = 0.0f;      // sum of distances
-    float sumY = 0.0f;      // sum of altitudes  
-    float sumXY = 0.0f;     // sum of (distance * altitude)
-    float sumX2 = 0.0f;     // sum of (distance²)
+    static float sumX = 0.0f;      // sum of distances
+    static float sumY = 0.0f;      // sum of altitudes  
+    static float sumXY = 0.0f;     // sum of (distance * altitude)
+    static float sumX2 = 0.0f;     // sum of (distance²)
     
-    for (uint8_t i = 0; i < sampleCount; i++) {
-        float x = (float)buffer[i].distance_cm;
-        float y = (float)buffer[i].altitude_cm;
-        
-        sumX += x;
-        sumY += y;
-        sumXY += x * y;
-        sumX2 += x * x;
-    }
+    float newestDistance = glideBuffer[bufferIndex].distance_cm;
+    float newestAltitude = glideBuffer[bufferIndex].altitude_cm;
+
+    float oldestDistance = glideBuffer[(bufferIndex + GLIDE_BUFFER_SIZE - bufferWindowSize) % GLIDE_BUFFER_SIZE].distance_cm;
+    float oldestAltitude = glideBuffer[(bufferIndex + GLIDE_BUFFER_SIZE - bufferWindowSize) % GLIDE_BUFFER_SIZE].altitude_cm;
+
+    sumX += newestDistance;
+    sumY += newestAltitude;
+    sumXY += newestDistance * newestAltitude;
+    sumX2 += newestDistance * newestDistance;
+
+    sumX -= oldestDistance;
+    sumY -= oldestAltitude;
+    sumXY -= oldestDistance * oldestAltitude;
+    sumX2 -= oldestDistance * oldestDistance;
     
     // Slope formula: m = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
-    float n = (float)sampleCount;
+    float n = (float)bufferWindowSize;
     float numerator = n * sumXY - sumX * sumY;
     float denominator = n * sumX2 - sumX * sumX;
     
@@ -1896,6 +1902,10 @@ static float calculateGlideRatioFromBuffer(const glidePositionSample_t *buffer, 
     // For descent, slope should be negative
     if (slope >= 0.0f) {
         return 0.0f;  // Not descending
+    }
+
+    if (fabsf(slope) < 1e-6f) {
+        return 0.0f;  // Slope too small, indicates near-horizontal flight
     }
     
     // Glide ratio = distance / |altitude_change| = 1 / |slope|
@@ -1946,7 +1956,7 @@ static void updateGlideRatioCalculation(void) {
 
             if (samplesSinceLastClear >= minimumSampleCount) {
                 // Calculate glide ratio using only the valid samples collected
-                currentGlideRatio = calculateGlideRatioFromBuffer(glideBuffer, samplesSinceLastClear);
+                currentGlideRatio = calculateGlideRatioFromSample(glideBufferIndex, samplesSinceLastClear);
             }
             else {
                 currentGlideRatio = 0.0f;  // Not enough samples yet
