@@ -191,7 +191,7 @@ typedef struct statistic_s {
     int32_t flightStartMWh;
 } statistic_t;
 
-#define MAX_GLIDE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
+#define GLIDE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -200,7 +200,7 @@ typedef struct glidePositionSample_s {
 
 
 // Fixed-size glide buffer
-static glidePositionSample_t glideBuffer[MAX_GLIDE_BUFFER_SIZE];
+static glidePositionSample_t glideBuffer[GLIDE_BUFFER_SIZE];
 
 // Calculated glide ratio (distance per unit altitude descent)
 // Available for use by multiple OSD elements
@@ -1914,21 +1914,20 @@ static float calculateGlideRatioFromBuffer(const glidePositionSample_t *buffer, 
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
     uint8_t timeFrame = osdConfig()->glide_sample_time_frame > 0 ? osdConfig()->glide_sample_time_frame : 5;  // Default to 5 seconds if misconfigured
-    const uint16_t bufferSize = MAX_GLIDE_BUFFER_SIZE;
-    const uint8_t minimumSampleCount = bufferSize / 4;
+    const uint8_t minimumSampleCount = GLIDE_BUFFER_SIZE / 4;
 
     static uint8_t glideBufferIndex = 0;
     static timeMs_t glideLastSampleTime = 0;
     static uint8_t samplesSinceLastClear = 0;
     const timeMs_t currentTime = millis();
-    const uint16_t sampleIntervalMs = (uint16_t)(((uint32_t)timeFrame * 1000U) / bufferSize);
+    const uint16_t sampleIntervalMs = (uint16_t)(((uint32_t)timeFrame * 1000U) / GLIDE_BUFFER_SIZE);  // Interval between samples in milliseconds
 
     if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
         // Record a new sample
         glideLastSampleTime = currentTime;
         if (!isDataValidForGlideRatio()) {
             // Conditions not valid for glide ratio, reset buffer
-            for (uint16_t i = 0; i < bufferSize; i++) {
+            for (uint16_t i = 0; i < GLIDE_BUFFER_SIZE; i++) {
                 glideBuffer[i].distance_cm = 0;
                 glideBuffer[i].altitude_cm = 0;
             }
@@ -1939,9 +1938,9 @@ static void updateGlideRatioCalculation(void) {
         else {
             glideBuffer[glideBufferIndex].distance_cm = getTotalTravelDistance();
             glideBuffer[glideBufferIndex].altitude_cm = osdGetAltitude();
-            glideBufferIndex = (glideBufferIndex + 1) % bufferSize;
+            glideBufferIndex = (glideBufferIndex + 1) % GLIDE_BUFFER_SIZE;
 
-            if (samplesSinceLastClear < bufferSize) {
+            if (samplesSinceLastClear < GLIDE_BUFFER_SIZE) {
                 samplesSinceLastClear++;
             }
 
