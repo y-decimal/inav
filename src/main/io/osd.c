@@ -1964,7 +1964,7 @@ static void enableGlideRatioCalculation(void) {
     if (!useGlideElement) {
         useGlideElement = true;
         uint8_t timeFrame = osdConfig()->glide_sample_time_frame;
-        if (timeFrame > 1 && timeFrame < 60) {
+        if (timeFrame >= 5 && timeFrame <= 60) {
             glideSampleTimeFrame = timeFrame;
         }
         updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
