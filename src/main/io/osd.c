@@ -1942,7 +1942,6 @@ static void updateGlideRatioCalculation(void) {
         else {
             glideBuffer[glideBufferIndex].distance_cm = getTotalTravelDistance();
             glideBuffer[glideBufferIndex].altitude_cm = osdGetAltitude();
-            glideBufferIndex = (glideBufferIndex + 1) % GLIDE_BUFFER_SIZE;
 
             if (samplesSinceLastClear < GLIDE_BUFFER_SIZE) {
                 samplesSinceLastClear++;
@@ -1955,6 +1954,8 @@ static void updateGlideRatioCalculation(void) {
             else {
                 currentGlideRatio = 0.0f;  // Not enough samples yet
             }
+
+            glideBufferIndex = (glideBufferIndex + 1) % GLIDE_BUFFER_SIZE;
         }
     }
 }
