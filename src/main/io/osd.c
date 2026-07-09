@@ -1915,8 +1915,8 @@ static void updateGlideRatioCalculation(void) {
     static int64_t sumXY;     // sum of (distance * altitude)
     static int64_t sumX2;     // sum of (distance²)
 
-    static const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
-    static const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
+    const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
+    const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
 
     const timeMs_t currentTime = millis();
 
