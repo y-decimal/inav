@@ -192,6 +192,7 @@ typedef struct statistic_s {
 } statistic_t;
 
 #define GLIDE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
+#define GLIDE_MAX_SAMPLE_RATE_HZ 4
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -1908,12 +1909,14 @@ static void updateGlideRatioCalculation(void) {
     static uint8_t glideBufferIndex = 0;
     static timeMs_t glideLastSampleTime = 0;
     static uint8_t currentSampleCount = 0;
-    static const uint16_t sampleIntervalMs = (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / GLIDE_BUFFER_SIZE);  // Interval between samples in milliseconds
 
     static float sumX = 0.0f;      // sum of distances
     static float sumY = 0.0f;      // sum of altitudes
     static float sumXY = 0.0f;     // sum of (distance * altitude)
     static float sumX2 = 0.0f;     // sum of (distance²)
+
+    const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
+    const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
 
     const timeMs_t currentTime = millis();
 
@@ -1936,7 +1939,7 @@ static void updateGlideRatioCalculation(void) {
             sumXY += newSample.distance_cm * newSample.altitude_cm;
             sumX2 += newSample.distance_cm * newSample.distance_cm;
 
-            if (currentSampleCount < GLIDE_BUFFER_SIZE) {
+            if (currentSampleCount < activeWindowSamples) {
                 currentSampleCount++;
             } else {
                 // Remove the oldest sample from the sums
@@ -1958,7 +1961,7 @@ static void updateGlideRatioCalculation(void) {
             // Store the new sample in the buffer
             glideBuffer[glideBufferIndex] = newSample;
 
-            glideBufferIndex = (glideBufferIndex + 1) % GLIDE_BUFFER_SIZE;
+            glideBufferIndex = (glideBufferIndex + 1) % activeWindowSamples;
 
         }
     }
