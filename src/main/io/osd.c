@@ -1870,7 +1870,7 @@ static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sum
     
     
     // Slope formula: m = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
-    int8_t n = currentSampleCount;
+    uint8_t n = currentSampleCount;
     int64_t numerator = n * sumXY - sumX * sumY;
     int64_t denominator = n * sumX2 - sumX * sumX;
     
