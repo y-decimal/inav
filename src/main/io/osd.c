@@ -1906,14 +1906,14 @@ static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sum
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
 
-    static uint8_t glideBufferIndex = 0;
-    static timeMs_t glideLastSampleTime = 0;
-    static uint8_t currentSampleCount = 0;
+    static uint8_t glideBufferIndex;
+    static timeMs_t glideLastSampleTime;
+    static uint8_t currentSampleCount;
 
-    static int64_t sumX = 0;      // sum of distances
-    static int64_t sumY = 0;      // sum of altitudes
-    static int64_t sumXY = 0;     // sum of (distance * altitude)
-    static int64_t sumX2 = 0;     // sum of (distance²)
+    static int64_t sumX;      // sum of distances
+    static int64_t sumY;      // sum of altitudes
+    static int64_t sumXY;     // sum of (distance * altitude)
+    static int64_t sumX2;     // sum of (distance²)
 
     static const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
     static const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
