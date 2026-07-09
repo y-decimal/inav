@@ -1879,7 +1879,7 @@ static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sum
         return 0.0f;  // Not enough variation in distance
     }
     
-    float slope = numerator / denominator;  // altitude_change / distance_change
+    float slope = (float)numerator / (float)denominator;  // altitude_change / distance_change
     
     // For descent, slope should be negative
     if (slope >= 0.0f) {
