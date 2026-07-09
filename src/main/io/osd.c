@@ -1862,7 +1862,7 @@ static bool isDataValidForGlideRatio(void) {
 // Linear regression: calculate glide ratio from position samples
 // Returns glide ratio (horizontal distance per 1 unit vertical descent)
 // Returns 0 if insufficient data or invalid conditions
-static float calculateGlideRatioFromSums(float sumX, float sumY, float sumXY, float sumX2, uint8_t currentSampleCount)
+static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sumXY, int64_t sumX2, uint8_t currentSampleCount)
 {
     // Least-squares linear regression: y = mx + b
     // where x = horizontal distance, y = altitude
@@ -1870,12 +1870,12 @@ static float calculateGlideRatioFromSums(float sumX, float sumY, float sumXY, fl
     
     
     // Slope formula: m = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
-    float n = (float)currentSampleCount;
-    float numerator = n * sumXY - sumX * sumY;
-    float denominator = n * sumX2 - sumX * sumX;
+    int8_t n = currentSampleCount;
+    int64_t numerator = n * sumXY - sumX * sumY;
+    int64_t denominator = n * sumX2 - sumX * sumX;
     
     // Avoid division by zero or degenerate cases
-    if (fabsf(denominator) < 1e-6f) {
+    if (denominator == 0) {
         return 0.0f;  // Not enough variation in distance
     }
     
@@ -1910,10 +1910,10 @@ static void updateGlideRatioCalculation(void) {
     static timeMs_t glideLastSampleTime = 0;
     static uint8_t currentSampleCount = 0;
 
-    static float sumX = 0.0f;      // sum of distances
-    static float sumY = 0.0f;      // sum of altitudes
-    static float sumXY = 0.0f;     // sum of (distance * altitude)
-    static float sumX2 = 0.0f;     // sum of (distance²)
+    static int64_t sumX = 0;      // sum of distances
+    static int64_t sumY = 0;      // sum of altitudes
+    static int64_t sumXY = 0;     // sum of (distance * altitude)
+    static int64_t sumX2 = 0;     // sum of (distance²)
 
     const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
     const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
@@ -1928,7 +1928,6 @@ static void updateGlideRatioCalculation(void) {
             return;
         }
         else {
-
             glidePositionSample_t newSample;
 
             newSample.distance_cm = getTotalTravelDistance();
@@ -1943,8 +1942,8 @@ static void updateGlideRatioCalculation(void) {
                 currentSampleCount++;
             } else {
                 // Remove the oldest sample from the sums
-                float oldestDistance = glideBuffer[glideBufferIndex].distance_cm;
-                float oldestAltitude = glideBuffer[glideBufferIndex].altitude_cm;
+                int64_t oldestDistance = glideBuffer[glideBufferIndex].distance_cm;
+                int64_t oldestAltitude = glideBuffer[glideBufferIndex].altitude_cm;
 
                 sumX -= oldestDistance;
                 sumY -= oldestAltitude;
