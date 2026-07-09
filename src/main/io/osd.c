@@ -1949,7 +1949,11 @@ static void updateGlideRatioCalculation(void) {
                 sumX2 -= oldestDistance * oldestDistance;
             }
 
-            currentGlideRatio = calculateGlideRatioFromSums(sumX, sumY, sumXY, sumX2, currentSampleCount);
+            if (currentSampleCount >= 10) {  // Need at least 10 samples to calculate useful glide ratio
+                currentGlideRatio = calculateGlideRatioFromSums(sumX, sumY, sumXY, sumX2, currentSampleCount);
+            } else {
+                currentGlideRatio = 0.0f;  // Not enough samples to calculate
+            }
 
             // Store the new sample in the buffer
             glideBuffer[glideBufferIndex] = newSample;
