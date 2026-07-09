@@ -206,6 +206,7 @@ static glidePositionSample_t glideBuffer[GLIDE_BUFFER_SIZE];
 // Available for use by multiple OSD elements
 static float currentGlideRatio = 0.0f;
 static bool useGlideElement = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
+static uint8_t glideSampleTimeFrame = 5;
 
 static statistic_t stats;
 
@@ -1923,14 +1924,13 @@ static float calculateGlideRatioFromSample(uint8_t bufferIndex, uint8_t bufferWi
 // Called regularly to maintain glide ratio buffer regardless of OSD element visibility
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
-    uint8_t timeFrame = osdConfig()->glide_sample_time_frame > 0 ? osdConfig()->glide_sample_time_frame : 5;  // Default to 5 seconds if misconfigured
-    const uint8_t minimumSampleCount = GLIDE_BUFFER_SIZE / 4;
 
     static uint8_t glideBufferIndex = 0;
     static timeMs_t glideLastSampleTime = 0;
     static uint8_t samplesSinceLastClear = 0;
+    static const uint16_t sampleIntervalMs = (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / GLIDE_BUFFER_SIZE);  // Interval between samples in milliseconds
+
     const timeMs_t currentTime = millis();
-    const uint16_t sampleIntervalMs = (uint16_t)(((uint32_t)timeFrame * 1000U) / GLIDE_BUFFER_SIZE);  // Interval between samples in milliseconds
 
     if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
         // Record a new sample
@@ -1954,7 +1954,7 @@ static void updateGlideRatioCalculation(void) {
                 samplesSinceLastClear++;
             }
 
-            if (samplesSinceLastClear >= minimumSampleCount) {
+            if (samplesSinceLastClear >= (GLIDE_BUFFER_SIZE / 4)) {
                 // Calculate glide ratio using only the valid samples collected
                 currentGlideRatio = calculateGlideRatioFromSample(glideBufferIndex, samplesSinceLastClear);
             }
@@ -1968,6 +1968,10 @@ static void updateGlideRatioCalculation(void) {
 static void enableGlideRatioCalculation(void) {
     if (!useGlideElement) {
         useGlideElement = true;
+        uint8_t timeFrame = osdConfig()->glide_sample_time_frame;
+        if (timeFrame > 1 && timeFrame < 60) {
+            glideSampleTimeFrame = timeFrame;
+        }
         updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
     }
 }
