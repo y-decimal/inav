@@ -1921,48 +1921,55 @@ static void updateGlideRatioCalculation(void) {
     const timeMs_t currentTime = millis();
 
     if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
-        // Record a new sample
+
         glideLastSampleTime = currentTime;
+
         if (!isDataValidForGlideRatio()) {
-            // Conditions not valid for glide ratio, skip sampling but keep the buffer intact
+            // Conditions not valid for glide ratio, reset sums and sample count
+            sumX = 0;
+            sumY = 0;
+            sumXY = 0;
+            sumX2 = 0;
+            currentSampleCount = 0;
+            currentGlideRatio = 0.0f;
             return;
         }
-        else {
-            glidePositionSample_t newSample;
+        
+        // Record a new sample
+        glidePositionSample_t newSample;
 
-            newSample.distance_cm = getTotalTravelDistance();
-            newSample.altitude_cm = osdGetAltitude();
+        newSample.distance_cm = getTotalTravelDistance();
+        newSample.altitude_cm = osdGetAltitude();
 
-            sumX += newSample.distance_cm;
-            sumY += newSample.altitude_cm;
-            sumXY += (int64_t)newSample.distance_cm * (int64_t)newSample.altitude_cm;
-            sumX2 += (int64_t)newSample.distance_cm * (int64_t)newSample.distance_cm;
+        sumX += newSample.distance_cm;
+        sumY += newSample.altitude_cm;
+        sumXY += (int64_t)newSample.distance_cm * (int64_t)newSample.altitude_cm;
+        sumX2 += (int64_t)newSample.distance_cm * (int64_t)newSample.distance_cm;
 
-            if (currentSampleCount < activeWindowSamples) {
-                currentSampleCount++;
-            } else {
-                // Remove the oldest sample from the sums
-                int64_t oldestDistance = glideBuffer[glideBufferIndex].distance_cm;
-                int64_t oldestAltitude = glideBuffer[glideBufferIndex].altitude_cm;
+        if (currentSampleCount < activeWindowSamples) {
+            currentSampleCount++;
+        } else {
+            // Remove the oldest sample from the sums
+            int64_t oldestDistance = glideBuffer[glideBufferIndex].distance_cm;
+            int64_t oldestAltitude = glideBuffer[glideBufferIndex].altitude_cm;
 
-                sumX -= oldestDistance;
-                sumY -= oldestAltitude;
-                sumXY -= oldestDistance * oldestAltitude;
-                sumX2 -= oldestDistance * oldestDistance;
-            }
-
-            if (currentSampleCount >= 10) {  // Need at least 10 samples to calculate useful glide ratio
-                currentGlideRatio = calculateGlideRatioFromSums(sumX, sumY, sumXY, sumX2, currentSampleCount);
-            } else {
-                currentGlideRatio = 0.0f;  // Not enough samples to calculate
-            }
-
-            // Store the new sample in the buffer
-            glideBuffer[glideBufferIndex] = newSample;
-
-            glideBufferIndex = (glideBufferIndex + 1) % activeWindowSamples;
-
+            sumX -= oldestDistance;
+            sumY -= oldestAltitude;
+            sumXY -= oldestDistance * oldestAltitude;
+            sumX2 -= oldestDistance * oldestDistance;
         }
+
+        if (currentSampleCount >= 10) {  // Need at least 10 samples to calculate useful glide ratio
+            currentGlideRatio = calculateGlideRatioFromSums(sumX, sumY, sumXY, sumX2, currentSampleCount);
+        } else {
+             currentGlideRatio = 0.0f;  // Not enough samples to calculate
+        }
+
+        // Store the new sample in the buffer
+        glideBuffer[glideBufferIndex] = newSample;
+
+        glideBufferIndex = (glideBufferIndex + 1) % activeWindowSamples;
+
     }
 }
 
