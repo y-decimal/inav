@@ -1935,8 +1935,8 @@ static void updateGlideRatioCalculation(void) {
 
             sumX += newSample.distance_cm;
             sumY += newSample.altitude_cm;
-            sumXY += newSample.distance_cm * newSample.altitude_cm;
-            sumX2 += newSample.distance_cm * newSample.distance_cm;
+            sumXY += (int64_t)newSample.distance_cm * (int64_t)newSample.altitude_cm;
+            sumX2 += (int64_t)newSample.distance_cm * (int64_t)newSample.distance_cm;
 
             if (currentSampleCount < activeWindowSamples) {
                 currentSampleCount++;
