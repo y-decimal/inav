@@ -1905,6 +1905,83 @@ static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sum
     return 0.0f;  // Out of reasonable range
 }
 
+// Update glide ratio calculation
+// Called regularly to maintain glide ratio buffer regardless of OSD element visibility
+// This ensures glide ratio is available for all OSD elements that need it
+static void updateGlideRatioCalculation(void) {
+
+    static uint8_t glideBufferIndex;
+    static timeMs_t glideLastSampleTime;
+    static uint8_t currentSampleCount;
+
+    static int64_t sumX;      // sum of distances
+    static int64_t sumY;      // sum of altitudes
+    static int64_t sumXY;     // sum of (distance * altitude)
+    static int64_t sumX2;     // sum of (distance²)
+
+    static int32_t distanceOffset;  // Offset to make distances relative to the start of the window, prevents excessively large numbers in sums
+
+    const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
+    const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
+
+    const timeMs_t currentTime = millis();
+
+    if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
+
+        glideLastSampleTime = currentTime;
+        
+        // Record a new sample
+        glidePositionSample_t newSample;
+
+        newSample.distance_cm = getTotalTravelDistance();
+        newSample.altitude_cm = osdGetAltitude();
+
+        if (!isDataValidForGlideRatio()) {
+            // Conditions not valid for glide ratio, reset sums and sample count
+            sumX = 0;
+            sumY = 0;
+            sumXY = 0;
+            sumX2 = 0;
+            currentSampleCount = 0;
+            currentGlideRatio = 0.0f;
+            distanceOffset = newSample.distance_cm;  // Reset distance offset to current distance
+            return;
+        }
+
+        newSample.distance_cm -= distanceOffset;  // Adjust distance to be relative to the start of the window
+
+        sumX += newSample.distance_cm;
+        sumY += newSample.altitude_cm;
+        sumXY += (int64_t)newSample.distance_cm * (int64_t)newSample.altitude_cm;
+        sumX2 += (int64_t)newSample.distance_cm * (int64_t)newSample.distance_cm;
+
+        if (currentSampleCount < activeWindowSamples) {
+            currentSampleCount++;
+        } else {
+            // Remove the oldest sample from the sums
+            int64_t oldestDistance = glideBuffer[glideBufferIndex].distance_cm;
+            int64_t oldestAltitude = glideBuffer[glideBufferIndex].altitude_cm;
+
+            sumX -= oldestDistance;
+            sumY -= oldestAltitude;
+            sumXY -= oldestDistance * oldestAltitude;
+            sumX2 -= oldestDistance * oldestDistance;
+        }
+
+        if (currentSampleCount >= 10) {  // Need at least 10 samples to calculate useful glide ratio
+            currentGlideRatio = calculateGlideRatioFromSums(sumX, sumY, sumXY, sumX2, currentSampleCount);
+        } else {
+             currentGlideRatio = 0.0f;  // Not enough samples to calculate
+        }
+
+        // Store the new sample in the buffer
+        glideBuffer[glideBufferIndex] = newSample;
+
+        glideBufferIndex = (glideBufferIndex + 1) % activeWindowSamples;
+
+    }
+}
+
 
 static bool osdDrawSingleElement(uint8_t item)
 {
