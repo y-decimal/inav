@@ -2137,8 +2137,8 @@ static void updateMinimumSinkRateAndSpeed(void) {
 static void updateBestGlideRatioAndSpeed(void) {
     uint8_t bestGlideBinIndex;
     for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
-        if (polarBins[bestGlideBinIndex].sampleCount > 10 && polarBins[bestGlideBinIndex].sinkRateAverage != 0.0f) {
-            float glideRatio = convertBinIndexToAirspeed(bestGlideBinIndex) / -polarBins[bestGlideBinIndex].sinkRateAverage;
+        if (polarBins[bestGlideBinIndex].sampleCount > 10 && polarBins[bestGlideBinIndex].sinkRateAverage >= 0.0f) {
+            float glideRatio = convertBinIndexToAirspeed(bestGlideBinIndex) / polarBins[bestGlideBinIndex].sinkRateAverage;
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
                 bestGlideSpeed = convertBinIndexToAirspeed(bestGlideBinIndex);
@@ -2162,7 +2162,7 @@ static void updateGlidePolarData(void) {
     lastUpdateTime = currentTime;
 
     const float currentAirSpeedFloat = getAirspeedEstimate();
-    const float currentSinkRateFloat = getEstimatedActualVelocity(Z);
+    const float currentSinkRateFloat = -getEstimatedActualVelocity(Z);  // Sink rate is positive downwards, so negate Z velocity
 
     const int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedFloat);  // Round to nearest integer for binning
     const int32_t currentSinkRate = (int32_t)lroundf(currentSinkRateFloat);  // Round to nearest integer for binning
