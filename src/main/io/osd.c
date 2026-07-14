@@ -1848,7 +1848,7 @@ static bool isDataValidForGlideRatio(void) {
     if (getThrottlePercent(true) > 10 ||    
         getEstimatedActualVelocity(Z) > 0 ||
         ABS(attitude.values.roll) > 200 ||
-        ABS(attitude.values.pitch) > 300 ||) 
+        ABS(attitude.values.pitch) > 300) 
     {     
         lastInvalidTime = now;
         return false;
