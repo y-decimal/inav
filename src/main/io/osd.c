@@ -2043,6 +2043,30 @@ static uint8_t getPolarBinIndexForGivenSpeed(float airSpeed) {
     return polarBinIndex;
 }
 
+static void updateGlidePolarData() {
+
+    if (!isDataValidGlide()) {
+        return;  // Data not valid for glide conditions, skip
+    }
+
+    const float currentAirSpeed = getAirspeedEstimate();
+    const float currentSinkRate = getEstimatedActualVelocity(Z);
+
+    updatePolarBinWidth(currentAirSpeed);
+    uint8_t binIndex = getPolarBinIndexForGivenSpeed(currentAirSpeed);
+    if (binIndex >= POLAR_BIN_COUNT) {
+        return;  // Index out of range, skip
+    }
+
+    // Update the polar data for this bin
+    polarData[binIndex].sinkRateAvg = polarData[binIndex].sinkRateAvg * (1-sinkRateSmoothingAlpha) + currentSinkRate * sinkRateSmoothingAlpha;  // Smooth the sink rate
+    if (polarData[binIndex].sampleCount < UINT8_MAX) {
+        polarData[binIndex].sampleCount++;  // Increment sample count, but don't overflow
+    }
+}
+
+
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     uint16_t pos = osdLayoutsConfig()->item_pos[currentLayout][item];
