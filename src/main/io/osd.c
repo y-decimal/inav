@@ -1863,6 +1863,49 @@ static bool isDataValidForGlideRatio(void) {
 }
 
 
+// Linear regression: calculate glide ratio from position samples
+// Returns glide ratio (horizontal distance per 1 unit vertical descent)
+// Returns 0 if insufficient data or invalid conditions
+static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sumXY, int64_t sumX2, uint8_t currentSampleCount)
+{
+    // Least-squares linear regression: y = mx + b
+    // where x = horizontal distance, y = altitude
+    // We need: sumX, sumY, sumX², sumXY, and n (sample count)
+    
+    
+    // Slope formula: m = (n·Σxy - Σx·Σy) / (n·Σx² - (Σx)²)
+    uint8_t n = currentSampleCount;
+    int64_t numerator = n * sumXY - sumX * sumY;
+    int64_t denominator = n * sumX2 - sumX * sumX;
+    
+    // Avoid division by zero or degenerate cases
+    if (denominator == 0) {
+        return 0.0f;  // Not enough variation in distance
+    }
+    
+    float slope = (float)numerator / (float)denominator;  // altitude_change / distance_change
+    
+    // For descent, slope should be negative
+    if (slope >= 0.0f) {
+        return 0.0f;  // Not descending
+    }
+
+    if (fabsf(slope) < 1e-6f) {
+        return 0.0f;  // Slope too small, indicates near-horizontal flight
+    }
+    
+    // Glide ratio = distance / |altitude_change| = 1 / |slope|
+    float glideRatio = -1.0f / slope;
+    
+    // Sanity check: reasonable glide ratios are 1-100
+    if (glideRatio > 0.1f && glideRatio < 100.0f) {
+        return glideRatio;
+    }
+    
+    return 0.0f;  // Out of reasonable range
+}
+
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     uint16_t pos = osdLayoutsConfig()->item_pos[currentLayout][item];
