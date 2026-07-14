@@ -2103,6 +2103,13 @@ static void updateGlidePolarData(void) {
 
 }
 
+static void enableGlidePolarDataCollection(void) {
+    if (!glidePolarDataRequired) {
+        glidePolarDataRequired = true;
+        updateGlidePolarData();  // Start data collection immediately when element is enabled
+    }
+}
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     uint16_t pos = osdLayoutsConfig()->item_pos[currentLayout][item];
