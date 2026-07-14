@@ -2153,9 +2153,13 @@ static void updateBestGlideRatioAndSpeed(void) {
 
 static void updateGlidePolarData(void) {
 
-    if (!isDataValidGlide()) {
+    static timeMs_t lastUpdateTime = 0;
+    const timeMs_t currentTime = millis();
+
+    if (!isDataValidGlide() || (currentTime - lastUpdateTime < 1000)) {
         return;  // Data not valid for glide conditions, skip
     }
+    lastUpdateTime = currentTime;
 
     const float currentAirSpeedFloat = getAirspeedEstimate();
     const float currentSinkRateFloat = getEstimatedActualVelocity(Z);
