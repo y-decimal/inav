@@ -1905,6 +1905,10 @@ static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sum
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
 
+    if (!glideRatioRequired) {
+        return;  // Skip calculation if not required by any OSD element - Shouldn't happen, but just in case
+    }
+
     static uint8_t glideRatioBufferIndex;
     static timeMs_t glideLastSampleTime;
     static uint8_t currentSampleCount;
