@@ -191,8 +191,8 @@ typedef struct statistic_s {
     int32_t flightStartMWh;
 } statistic_t;
 
-#define GLIDE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
-#define GLIDE_MAX_SAMPLE_RATE_HZ 4
+#define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
+#define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -201,13 +201,13 @@ typedef struct glidePositionSample_s {
 
 
 // Fixed-size glide buffer
-static glidePositionSample_t glideBuffer[GLIDE_BUFFER_SIZE];
+static glidePositionSample_t glideBuffer[GLIDE_RATIO_SAMPLE_BUFFER_SIZE];
 
 // Calculated glide ratio (distance per unit altitude descent)
 // Available for use by multiple OSD elements
 static float currentGlideRatio = 0.0f;
-static bool useGlideElement = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
-static uint8_t glideSampleTimeFrame = 5;
+static bool glideRatioRequired = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
+static uint8_t glideRatioSampleTimeFrame = 5;
 
 static statistic_t stats;
 
@@ -1841,7 +1841,7 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
     return elementEnabled;
 }
 
-static bool isDataValidForGlideRatio(void) {
+static bool isDataValidGlide(void) {
     static timeMs_t lastInvalidTime = 0;
     const timeMs_t now = millis();
 
@@ -1905,7 +1905,7 @@ static float calculateGlideRatioFromSums(int64_t sumX, int64_t sumY, int64_t sum
 // This ensures glide ratio is available for all OSD elements that need it
 static void updateGlideRatioCalculation(void) {
 
-    static uint8_t glideBufferIndex;
+    static uint8_t glideRatioBufferIndex;
     static timeMs_t glideLastSampleTime;
     static uint8_t currentSampleCount;
 
@@ -1916,8 +1916,8 @@ static void updateGlideRatioCalculation(void) {
 
     static int32_t distanceOffset;  // Offset to make distances relative to the start of the window, prevents excessively large numbers in sums
 
-    const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
-    const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
+    const uint8_t activeWindowSamples = MIN(GLIDE_RATIO_SAMPLE_BUFFER_SIZE, (uint8_t)(glideRatioSampleTimeFrame * GLIDE_RATIO_MAX_SAMPLE_RATE_HZ));
+    const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_RATIO_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideRatioSampleTimeFrame * 1000U) / activeWindowSamples));
 
     const timeMs_t currentTime = millis();
 
@@ -1931,7 +1931,7 @@ static void updateGlideRatioCalculation(void) {
         newSample.distance_cm = getTotalTravelDistance();
         newSample.altitude_cm = osdGetAltitude();
 
-        if (!isDataValidForGlideRatio()) {
+        if (!isDataValidGlide()) {
             // Conditions not valid for glide ratio, reset sums and sample count
             sumX = 0;
             sumY = 0;
@@ -1954,8 +1954,8 @@ static void updateGlideRatioCalculation(void) {
             currentSampleCount++;
         } else {
             // Remove the oldest sample from the sums
-            int64_t oldestDistance = glideBuffer[glideBufferIndex].distance_cm;
-            int64_t oldestAltitude = glideBuffer[glideBufferIndex].altitude_cm;
+            int64_t oldestDistance = glideBuffer[glideRatioBufferIndex].distance_cm;
+            int64_t oldestAltitude = glideBuffer[glideRatioBufferIndex].altitude_cm;
 
             sumX -= oldestDistance;
             sumY -= oldestAltitude;
@@ -1970,19 +1970,19 @@ static void updateGlideRatioCalculation(void) {
         }
 
         // Store the new sample in the buffer
-        glideBuffer[glideBufferIndex] = newSample;
+        glideBuffer[glideRatioBufferIndex] = newSample;
 
-        glideBufferIndex = (glideBufferIndex + 1) % activeWindowSamples;
+        glideRatioBufferIndex = (glideRatioBufferIndex + 1) % activeWindowSamples;
 
     }
 }
 
 static void enableGlideRatioCalculation(void) {
-    if (!useGlideElement) {
-        useGlideElement = true;
+    if (!glideRatioRequired) {
+        glideRatioRequired = true;
         uint8_t timeFrame = osdConfig()->glide_sample_time_frame;
         if (timeFrame >= 5 && timeFrame <= 60) {
-            glideSampleTimeFrame = timeFrame;
+            glideRatioSampleTimeFrame = timeFrame;
         }
         updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
     }
@@ -2227,7 +2227,7 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlideRatioCalculation();  // Ensure glide ratio calculation is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidForGlideRatio()) {
+            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidGlide()) {
                 osdFormatCentiNumber(buff + 1, currentGlideRatio * 100.0f, 0, 2, 0, 3, false);
             } else {
                 buff[1] = buff[2] = buff[3] = '-';
@@ -3312,7 +3312,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             uint16_t glideTime = osdGetRemainingGlideTime();
             buff[0] = SYM_GLIDE_MINS;
-            if (glideTime > 0 && isDataValidForGlideRatio()) {
+            if (glideTime > 0 && isDataValidGlide()) {
                 // Maximum value we can show in minutes is 99 minutes and 59 seconds. It is extremely unlikely that glide
                 // time will be longer than 99 minutes. If it is, it will show 99:^^
                 if (glideTime > (99 * 60) + 59) {
@@ -3333,7 +3333,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             int32_t altitude = osdGetAltitude();
             buff[0] = SYM_GLIDE_DIST;
-            if (currentGlideRatio <= 0.0f || altitude <= 0 || !isDataValidForGlideRatio()) {
+            if (currentGlideRatio <= 0.0f || altitude <= 0 || !isDataValidGlide()) {
                 tfp_sprintf(buff + 1, "%s%c", "---", SYM_BLANK);
                 buff[5] = '\0';
                 break;
@@ -6019,7 +6019,7 @@ static void osdRefresh(timeUs_t currentTimeUs)
 {
     osdFilterData(currentTimeUs);
     
-    if (useGlideElement) {
+    if (glideRatioRequired) {
         updateGlideRatioCalculation();
     }
 
