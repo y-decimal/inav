@@ -2104,8 +2104,8 @@ static void updateGlidePolarData(void) {
 }
 
 static void enableGlidePolarDataCollection(void) {
-    if (!glidePolarDataRequired) {
-        glidePolarDataRequired = true;
+    if (!polarRequired) {
+        polarRequired = true;
         updateGlidePolarData();  // Start data collection immediately when element is enabled
     }
 }
