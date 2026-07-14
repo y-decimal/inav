@@ -2049,7 +2049,7 @@ static float convertBinIndexToAirspeed(uint8_t binIndex) {
 
 
 
-static void updateGlidePolarData() {
+static void updateGlidePolarData(void) {
 
     if (!isDataValidGlide()) {
         return;  // Data not valid for glide conditions, skip
@@ -2065,9 +2065,9 @@ static void updateGlidePolarData() {
     }
 
     // Update the polar data for this bin
-    polarData[binIndex].sinkRateAvg = polarData[binIndex].sinkRateAvg * (1-sinkRateSmoothingAlpha) + currentSinkRate * sinkRateSmoothingAlpha;  // Smooth the sink rate
-    if (polarData[binIndex].sampleCount < UINT8_MAX) {
-        polarData[binIndex].sampleCount++;  // Increment sample count, but don't overflow
+    polarBins[binIndex].sinkRateAverage = polarBins[binIndex].sinkRateAverage * (1-sinkRateSmoothingAlpha) + currentSinkRate * sinkRateSmoothingAlpha;  // Smooth the sink rate
+    if (polarBins[binIndex].sampleCount < UINT8_MAX) {
+        polarBins[binIndex].sampleCount++;  // Increment sample count, but don't overflow
     }
 }
 
