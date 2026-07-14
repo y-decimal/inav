@@ -6146,7 +6146,7 @@ static void osdRefresh(timeUs_t currentTimeUs)
     }
 
     if (polarRequired) {
-        updatePolarCalculation();
+        updateGlidePolarData();
     }
 
 #ifdef USE_CMS
