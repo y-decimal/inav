@@ -1326,21 +1326,16 @@ static inline int32_t osdGetAltitudeMsl(void)
 }
 
 uint16_t osdGetRemainingGlideTime(void) {
-    float value = getEstimatedActualVelocity(Z);
-    static pt1Filter_t glideTimeFilterState;
-    const  timeMs_t curTimeMs = millis();
-    static timeMs_t glideTimeUpdatedMs;
-
-    value = pt1FilterApply4(&glideTimeFilterState, isnormal(value) ? value : 0, 0.5, MS2S(curTimeMs - glideTimeUpdatedMs));
-    glideTimeUpdatedMs = curTimeMs;
-
-    if (value < 0) {
-        value = osdGetAltitude() / abs((int)value);
-    } else {
-        value = 0;
+    // Use glide ratio if available and valid
+    uint16_t glideTime = 0;
+    if (currentGlideRatio > 0.0f) {
+        int32_t altitude = osdGetAltitude();
+        int16_t groundSpeed = gpsSol.groundSpeed;
+        if (altitude > 0 && groundSpeed > 0) {
+           glideTime = (uint16_t)((float)altitude * currentGlideRatio / groundSpeed);
+        }
     }
-
-    return (uint16_t)roundf(value);
+    return glideTime;
 }
 
 static bool osdIsHeadingValid(void)
@@ -2230,18 +2225,10 @@ static bool osdDrawSingleElement(uint8_t item)
 
     case OSD_GLIDESLOPE:
         {
-            float horizontalSpeed = gpsSol.groundSpeed;
-            float sinkRate = -getEstimatedActualVelocity(Z);
-            static pt1Filter_t gsFilterState;
-            const timeMs_t currentTimeMs = millis();
-            static timeMs_t gsUpdatedTimeMs;
-            float glideSlope = horizontalSpeed / sinkRate;
-            glideSlope = pt1FilterApply4(&gsFilterState, isnormal(glideSlope) ? glideSlope : 200, 0.5, MS2S(currentTimeMs - gsUpdatedTimeMs));
-            gsUpdatedTimeMs = currentTimeMs;
-
+            enableGlideRatioCalculation();  // Ensure glide ratio calculation is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (glideSlope > 0.0f && glideSlope < 100.0f) {
-                osdFormatCentiNumber(buff + 1, glideSlope * 100.0f, 0, 2, 0, 3, false);
+            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidForGlideRatio()) {
+                osdFormatCentiNumber(buff + 1, currentGlideRatio * 100.0f, 0, 2, 0, 3, false);
             } else {
                 buff[1] = buff[2] = buff[3] = '-';
             }
@@ -3322,9 +3309,10 @@ static bool osdDrawSingleElement(uint8_t item)
         }
     case OSD_GLIDE_TIME_REMAINING:
         {
+            enableGlideRatioCalculation();
             uint16_t glideTime = osdGetRemainingGlideTime();
             buff[0] = SYM_GLIDE_MINS;
-            if (glideTime > 0) {
+            if (glideTime > 0 && isDataValidForGlideRatio()) {
                 // Maximum value we can show in minutes is 99 minutes and 59 seconds. It is extremely unlikely that glide
                 // time will be longer than 99 minutes. If it is, it will show 99:^^
                 if (glideTime > (99 * 60) + 59) {
@@ -3342,14 +3330,18 @@ static bool osdDrawSingleElement(uint8_t item)
         }
     case OSD_GLIDE_RANGE:
         {
-            uint16_t glideSeconds = osdGetRemainingGlideTime();
+            enableGlideRatioCalculation();
+            int32_t altitude = osdGetAltitude();
             buff[0] = SYM_GLIDE_DIST;
-            if (glideSeconds > 0) {
-                uint32_t glideRangeCM = glideSeconds * gpsSol.groundSpeed;
-                osdFormatDistanceSymbol(buff + 1, glideRangeCM, 0, 3);
-            } else {
+            if (currentGlideRatio <= 0.0f || altitude <= 0 || !isDataValidForGlideRatio()) {
                 tfp_sprintf(buff + 1, "%s%c", "---", SYM_BLANK);
                 buff[5] = '\0';
+                break;
+            }
+            else
+            {
+                int32_t glideRangeCm = (int32_t)(currentGlideRatio * altitude);
+                osdFormatDistanceSymbol(buff + 1, glideRangeCm, 0, 3);
             }
             break;
         }
