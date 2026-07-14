@@ -1915,6 +1915,8 @@ static void updateGlideRatioCalculation(void) {
     static int64_t sumXY;     // sum of (distance * altitude)
     static int64_t sumX2;     // sum of (distance²)
 
+    static int32_t distanceOffset;  // Offset to make distances relative to the start of the window, prevents excessively large numbers in sums
+
     const uint8_t activeWindowSamples = MIN(GLIDE_BUFFER_SIZE, (uint8_t)(glideSampleTimeFrame * GLIDE_MAX_SAMPLE_RATE_HZ));
     const uint16_t sampleIntervalMs = MAX((uint16_t)(1000U / GLIDE_MAX_SAMPLE_RATE_HZ), (uint16_t)(((uint32_t)glideSampleTimeFrame * 1000U) / activeWindowSamples));
 
@@ -1923,6 +1925,12 @@ static void updateGlideRatioCalculation(void) {
     if (currentTime - glideLastSampleTime >= sampleIntervalMs) {
 
         glideLastSampleTime = currentTime;
+        
+        // Record a new sample
+        glidePositionSample_t newSample;
+
+        newSample.distance_cm = getTotalTravelDistance();
+        newSample.altitude_cm = osdGetAltitude();
 
         if (!isDataValidForGlideRatio()) {
             // Conditions not valid for glide ratio, reset sums and sample count
@@ -1932,14 +1940,11 @@ static void updateGlideRatioCalculation(void) {
             sumX2 = 0;
             currentSampleCount = 0;
             currentGlideRatio = 0.0f;
+            distanceOffset = newSample.distance_cm;  // Reset distance offset to current distance
             return;
         }
-        
-        // Record a new sample
-        glidePositionSample_t newSample;
 
-        newSample.distance_cm = getTotalTravelDistance();
-        newSample.altitude_cm = osdGetAltitude();
+        newSample.distance_cm -= distanceOffset;  // Adjust distance to be relative to the start of the window
 
         sumX += newSample.distance_cm;
         sumY += newSample.altitude_cm;
