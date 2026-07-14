@@ -2404,7 +2404,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_RATIO:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            buff[0] = SYM_GLIDE;
+            buff[0] = SYM_GLIDESLOPE;
             if (bestGlideRatio > 0.0f && bestGlideRatio < 100.0f && isDataValidGlide()) {
                 osdFormatCentiNumber(buff + 1, bestGlideRatio * 100.0f, 0, 2, 0, 3, false);
             } else {
