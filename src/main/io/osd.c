@@ -2033,6 +2033,7 @@ static void updatePolarBinWidth(float currentAirSpeed) {
     if (fabsf(newPolarBinWidth - polarBinWidth) > 0.1f) { // Update bin width if it has changed significantly
         polarBinWidth = newPolarBinWidth;
     }
+    DEBUG_SET(DEBUG_GLIDE_OSD, 4, polarBinWidth);
 }
 
 // Get the polar bin index for a given airspeed
@@ -2044,11 +2045,14 @@ static uint8_t getPolarBinIndexForGivenSpeed(float airSpeed) {
 
     uint8_t polarBinIndex = (uint8_t)((airSpeed - minGlideAirSpeed) / polarBinWidth);
     polarBinIndex = constrain(polarBinIndex, 0, POLAR_BIN_COUNT - 1);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 5, polarBinIndex);
     return polarBinIndex;
 }
 
 static float convertBinIndexToAirspeed(uint8_t binIndex) {
-    return minGlideAirSpeed + (binIndex + 0.5f) * polarBinWidth;  // Return the center airspeed of the bin
+    float aspd = minGlideAirSpeed + (binIndex + 0.5f) * polarBinWidth;  // Return the center airspeed of the bin
+    DEBUG_SET(DEBUG_GLIDE_OSD, 6, (int32_t)aspd);
+    return aspd;
 }
 
 static void updateMinimumSinkRateAndSpeed(void) {
@@ -2062,6 +2066,8 @@ static void updateMinimumSinkRateAndSpeed(void) {
             }
         }
     }
+    DEBUG_SET(DEBUG_GLIDE_OSD, 0, (int32_t)minSinkRate);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 1, (int32_t)minSinkSpeed);
 }
 
 static void updateBestGlideRatioAndSpeed(void) {
@@ -2075,6 +2081,8 @@ static void updateBestGlideRatioAndSpeed(void) {
             }
         }
     }
+    DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)bestGlideRatio);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 3, (int32_t)bestGlideSpeed);
 }
 
 static void updateGlidePolarData(void) {
