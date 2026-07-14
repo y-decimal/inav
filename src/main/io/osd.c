@@ -200,7 +200,7 @@ typedef struct glidePositionSample_s {
     int32_t altitude_cm;     // Altitude
 } glidePositionSample_t;
 
-typedef struc polarBin_s {
+typedef struct polarBin_s {
     float sinkRateAverage;  // Average sink rate for this polar bin
     uint8_t sampleCount;
 } polarBin_t;
