@@ -1846,6 +1846,23 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
     return elementEnabled;
 }
 
+static bool isDataValidForGlideRatio(void) {
+    static timeMs_t lastInvalidTime = 0;
+    const timeMs_t now = millis();
+
+    if (getThrottlePercent(true) > 10 ||    
+        getEstimatedActualVelocity(Z) > 0 ||
+        ABS(attitude.values.roll) > 200 ||
+        ABS(attitude.values.pitch) > 300 ||) 
+    {     
+        lastInvalidTime = now;
+        return false;
+    }
+
+    return (now - lastInvalidTime) > 3000;  // Require 3 seconds of valid conditions before considering data valid for glide ratio
+}
+
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     uint16_t pos = osdLayoutsConfig()->item_pos[currentLayout][item];
