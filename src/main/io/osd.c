@@ -222,6 +222,10 @@ static float polarBinWidth = 0.0f; // Width of each polar bin in m/s, calculated
 static float sinkRateSmoothingAlpha = 0.1f; // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
 static float minGlideAirSpeed = 0.0f;
 static float maxGlideAirSpeed = 0.0f;
+static float minSinkRate = 0.0f;
+static float minSinkSpeed = 0.0f;
+static float bestGlideRatio = 0.0f;
+static float bestGlideSpeed = 0.0f;
 
 
 static statistic_t stats;
@@ -2047,7 +2051,31 @@ static float convertBinIndexToAirspeed(uint8_t binIndex) {
     return minGlideAirSpeed + (binIndex + 0.5f) * polarBinWidth;  // Return the center airspeed of the bin
 }
 
+static void updateMinimumSinkRateAndSpeed(void) {
 
+    uint8_t minSinkRateBinIndex;
+    for (minSinkRateBinIndex = 0; minSinkRateBinIndex < POLAR_BIN_COUNT; minSinkRateBinIndex++) {
+        if (polarBins[minSinkRateBinIndex].sampleCount > 0) {
+            if (minSinkRate == 0.0f || polarBins[minSinkRateBinIndex].sinkRateAverage < minSinkRate) {
+                minSinkRate = polarBins[minSinkRateBinIndex].sinkRateAverage;
+                minSinkSpeed = convertBinIndexToAirspeed(minSinkRateBinIndex);
+            }
+        }
+    }
+}
+
+static void updateBestGlideRatioAndSpeed(void) {
+    uint8_t bestGlideBinIndex;
+    for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
+        if (polarBins[bestGlideBinIndex].sampleCount > 0) {
+            float glideRatio = convertBinIndexToAirspeed(bestGlideBinIndex) / -polarBins[bestGlideBinIndex].sinkRateAverage;
+            if (glideRatio > bestGlideRatio) {
+                bestGlideRatio = glideRatio;
+                bestGlideSpeed = convertBinIndexToAirspeed(bestGlideBinIndex);
+            }
+        }
+    }
+}
 
 static void updateGlidePolarData(void) {
 
@@ -2069,9 +2097,11 @@ static void updateGlidePolarData(void) {
     if (polarBins[binIndex].sampleCount < UINT8_MAX) {
         polarBins[binIndex].sampleCount++;  // Increment sample count, but don't overflow
     }
+    
+    updateMinimumSinkRateAndSpeed();
+    updateBestGlideRatioAndSpeed();
+
 }
-
-
 
 static bool osdDrawSingleElement(uint8_t item)
 {
