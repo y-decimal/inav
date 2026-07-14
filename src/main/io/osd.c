@@ -1982,6 +1982,16 @@ static void updateGlideRatioCalculation(void) {
     }
 }
 
+static void enableGlideRatioCalculation(void) {
+    if (!useGlideElement) {
+        useGlideElement = true;
+        uint8_t timeFrame = osdConfig()->glide_sample_time_frame;
+        if (timeFrame >= 5 && timeFrame <= 60) {
+            glideSampleTimeFrame = timeFrame;
+        }
+        updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
+    }
+}
 
 static bool osdDrawSingleElement(uint8_t item)
 {
@@ -6016,6 +6026,10 @@ static bool osdIsPageDownStickCommandHeld(void)
 static void osdRefresh(timeUs_t currentTimeUs)
 {
     osdFilterData(currentTimeUs);
+    
+    if (useGlideElement) {
+        updateGlideRatioCalculation();
+    }
 
 #ifdef USE_CMS
     if (IS_RC_MODE_ACTIVE(BOXOSD) && (!cmsInMenu) && !(osdConfig()->osd_failsafe_switch_layout && FLIGHT_MODE(FAILSAFE_MODE))) {
