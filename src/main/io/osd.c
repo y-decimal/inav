@@ -723,6 +723,67 @@ static void osdFormatAltitudeStr(char *buff, int32_t alt)
     }
 }
 
+
+static char osdVelocityUnitSymbol(void)
+{
+    switch ((osd_unit_e)osdConfig()->units) {
+    case OSD_UNIT_UK:
+        FALLTHROUGH;
+    case OSD_UNIT_METRIC_MPH:
+        FALLTHROUGH;
+    case OSD_UNIT_IMPERIAL:
+        return SYM_MPH;
+    case OSD_UNIT_GA:
+        return SYM_KT;
+    case OSD_UNIT_METRIC:
+    default:
+        return SYM_KMH;
+    }
+}
+
+static char osdVerticalSpeedUnitSymbol(void)
+{
+    switch ((osd_unit_e)osdConfig()->units) {
+    case OSD_UNIT_UK:
+        FALLTHROUGH;
+    case OSD_UNIT_IMPERIAL:
+        return SYM_FTS;
+    case OSD_UNIT_GA:
+        return SYM_100FTM;
+    case OSD_UNIT_METRIC_MPH:
+        FALLTHROUGH;
+    case OSD_UNIT_METRIC:
+    default:
+        return SYM_MS;
+    }
+}
+
+static void osdFormatVerticalSpeedStr(char *buff, int32_t vel)
+{
+    int32_t value = vel;
+    char suffix = osdVerticalSpeedUnitSymbol();
+
+    switch ((osd_unit_e)osdConfig()->units) {
+    case OSD_UNIT_UK:
+        FALLTHROUGH;
+    case OSD_UNIT_IMPERIAL:
+        value = CENTIMETERS_TO_CENTIFEET(value);
+        break;
+    case OSD_UNIT_GA:
+        value = CENTIMETERS_TO_FEET(value * 60);
+        break;
+    case OSD_UNIT_METRIC_MPH:
+        FALLTHROUGH;
+    case OSD_UNIT_METRIC:
+    default:
+        break;
+    }
+
+    osdFormatCentiNumber(buff, value, 0, 1, 0, 3, false);
+    buff[3] = suffix;
+    buff[4] = '\0';
+}
+
 static void osdFormatTime(char *buff, uint32_t seconds, char sym_m, char sym_h)
 {
     uint32_t value = seconds;
@@ -2377,27 +2438,29 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_RATE:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            buff[0] = SYM_MS;
             if (minSinkRate < 0.0f && minSinkRate > -100.0f && isDataValidGlide()) {
-                osdFormatCentiNumber(buff + 1, -minSinkRate * 100.0f, 0, 2, 0, 3, false);
+                osdFormatVerticalSpeedStr(buff, (int32_t)lrintf(-minSinkRate));
             } else {
-                buff[1] = buff[2] = buff[3] = '-';
+                buff[0] = buff[1] = buff[2] = '-';
+                buff[3] = osdVerticalSpeedUnitSymbol();
+                buff[4] = '\0';
             }
-            buff[4] = '\0';
             break;
         } 
 
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            buff[0] = SYM_KMH;
             if (minSinkSpeed > 0.0f && minSinkSpeed < 100.0f && isDataValidGlide()) {
                 int32_t minSinkSpeedConverted = osdConvertVelocityToUnit(minSinkSpeed);
-                osdFormatCentiNumber(buff + 1, minSinkSpeedConverted, 0, 2, 0, 3, false);
+                osdFormatCentiNumber(buff, minSinkSpeedConverted, 0, 2, 0, 3, false);
+                buff[3] = osdVelocityUnitSymbol();
+                buff[4] = '\0';
             } else {
-                buff[1] = buff[2] = buff[3] = '-';
+                buff[0] = buff[1] = buff[2] = '-';
+                buff[3] = osdVelocityUnitSymbol();
+                buff[4] = '\0';
             }
-            buff[4] = '\0';
             break;
         }
 
@@ -2417,14 +2480,16 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            buff[0] = SYM_KMH;
             if (bestGlideSpeed > 0.0f && bestGlideSpeed < 100.0f && isDataValidGlide()) {
                 int32_t bestGlideSpeedConverted = osdConvertVelocityToUnit(bestGlideSpeed);
-                osdFormatCentiNumber(buff + 1, bestGlideSpeedConverted, 0, 2, 0, 3, false);
+                osdFormatCentiNumber(buff, bestGlideSpeedConverted, 0, 2, 0, 3, false);
+                buff[3] = osdVelocityUnitSymbol();
+                buff[4] = '\0';
             } else {
-                buff[1] = buff[2] = buff[3] = '-';
+                buff[0] = buff[1] = buff[2] = '-';
+                buff[3] = osdVelocityUnitSymbol();
+                buff[4] = '\0';
             }
-            buff[4] = '\0';
             break;
         }
 
