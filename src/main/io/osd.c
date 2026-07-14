@@ -201,7 +201,7 @@ typedef struct glidePositionSample_s {
 } glidePositionSample_t;
 
 typedef struct polarBin_s {
-    float sinkRateAverage;  // Average sink rate for this polar bin
+    int32_t sinkRateAverage;  // Average sink rate for this polar bin
     uint8_t sampleCount;
 } polarBin_t;
 
@@ -218,14 +218,14 @@ static bool glideRatioRequired = false; // Whether any glide element is enabled,
 static uint8_t glideRatioSampleTimeFrame = 5;
 
 static bool polarRequired = false; // Whether any polar element is enabled, used to determine whether polar calculation needs to be performed
-static float polarBinWidth = 0.0f; // Width of each polar bin in m/s, calculated based on measured min/max airspeed and number of polar bins
+static int32_t polarBinWidth = 0; // Width of each polar bin in cm/s, calculated based on measured min/max airspeed and number of polar bins
 static float sinkRateSmoothingAlpha = 0.1f; // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
-static float minGlideAirSpeed = 0.0f;
-static float maxGlideAirSpeed = 0.0f;
-static float minSinkRate = 0.0f;
-static float minSinkSpeed = 0.0f;
+static int32_t minGlideAirSpeed = 0; // Minimum airspeed in cm/s measured during glide, used to determine polar bin width
+static int32_t maxGlideAirSpeed = 0; // Maximum airspeed in cm/s measured during glide, used to determine polar bin width
+static int32_t minSinkRate = 0; // Minimum sink rate in cm/s
+static int32_t minSinkSpeed = 0; // Minimum sink speed in cm/s
 static float bestGlideRatio = 0.0f;
-static float bestGlideSpeed = 0.0f;
+static int32_t bestGlideSpeed = 0; // Best glide speed in cm/s
 
 
 static statistic_t stats;
@@ -2012,11 +2012,13 @@ static void enableGlideRatioCalculation(void) {
 }
 
 // Update polar bin width based on current airspeed and glide conditions
-static void updatePolarBinWidth(float currentAirSpeed) {
+static void updatePolarBinWidth(int32_t currentAirSpeedInCMS) {
 
     if (!isDataValidGlide()) {
         return;  // Data not from valid glide conditions, skip
     }
+
+    int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedInCMS);  // Round to nearest integer for binning
 
     if (currentAirSpeed < minGlideAirSpeed) {
         minGlideAirSpeed = minGlideAirSpeed*0.9f + currentAirSpeed*0.1f;  // Smooth minimum airspeed
@@ -2037,21 +2039,21 @@ static void updatePolarBinWidth(float currentAirSpeed) {
 }
 
 // Get the polar bin index for a given airspeed
-static uint8_t getPolarBinIndexForGivenSpeed(float airSpeed) {
+static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
 
     if (polarBinWidth <= 0) {
         return 0;  // Avoid division by zero (returns first bin instead of sentinel value to avoid accidental out of bounds buffer access)
     }
 
-    uint8_t polarBinIndex = (uint8_t)((airSpeed - minGlideAirSpeed) / polarBinWidth);
+    uint8_t polarBinIndex = (uint8_t)((airspeedInCMS - minGlideAirSpeed) / polarBinWidth);
     polarBinIndex = constrain(polarBinIndex, 0, POLAR_BIN_COUNT - 1);
     DEBUG_SET(DEBUG_GLIDE_OSD, 5, polarBinIndex);
     return polarBinIndex;
 }
 
-static float convertBinIndexToAirspeed(uint8_t binIndex) {
-    float aspd = minGlideAirSpeed + (binIndex + 0.5f) * polarBinWidth;  // Return the center airspeed of the bin
-    DEBUG_SET(DEBUG_GLIDE_OSD, 6, (int32_t)aspd);
+static int32_t convertBinIndexToAirspeed(uint8_t binIndex) {
+    int32_t aspd = minGlideAirSpeed + (int32_t)(binIndex * polarBinWidth);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 6, aspd);
     return aspd;
 }
 
@@ -2059,21 +2061,22 @@ static void updateMinimumSinkRateAndSpeed(void) {
 
     uint8_t minSinkRateBinIndex;
     for (minSinkRateBinIndex = 0; minSinkRateBinIndex < POLAR_BIN_COUNT; minSinkRateBinIndex++) {
-        if (polarBins[minSinkRateBinIndex].sampleCount > 0) {
+        if (polarBins[minSinkRateBinIndex].sampleCount > 10) {
             if (minSinkRate == 0.0f || polarBins[minSinkRateBinIndex].sinkRateAverage < minSinkRate) {
                 minSinkRate = polarBins[minSinkRateBinIndex].sinkRateAverage;
                 minSinkSpeed = convertBinIndexToAirspeed(minSinkRateBinIndex);
             }
         }
     }
-    DEBUG_SET(DEBUG_GLIDE_OSD, 0, (int32_t)minSinkRate);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 1, (int32_t)minSinkSpeed);
+
+    DEBUG_SET(DEBUG_GLIDE_OSD, 0, minSinkRate);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 1, minSinkSpeed);
 }
 
 static void updateBestGlideRatioAndSpeed(void) {
     uint8_t bestGlideBinIndex;
     for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
-        if (polarBins[bestGlideBinIndex].sampleCount > 0) {
+        if (polarBins[bestGlideBinIndex].sampleCount > 10 && polarBins[bestGlideBinIndex].sinkRateAverage != 0.0f) {
             float glideRatio = convertBinIndexToAirspeed(bestGlideBinIndex) / -polarBins[bestGlideBinIndex].sinkRateAverage;
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
@@ -2081,8 +2084,10 @@ static void updateBestGlideRatioAndSpeed(void) {
             }
         }
     }
-    DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)bestGlideRatio);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 3, (int32_t)bestGlideSpeed);
+
+    float scaledBestGlideRatio = bestGlideRatio * 100.0f;  // Scale for integer representation
+    DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)lrintf(scaledBestGlideRatio));
+    DEBUG_SET(DEBUG_GLIDE_OSD, 3, bestGlideSpeed);
 }
 
 static void updateGlidePolarData(void) {
@@ -2091,10 +2096,13 @@ static void updateGlidePolarData(void) {
         return;  // Data not valid for glide conditions, skip
     }
 
-    const float currentAirSpeed = getAirspeedEstimate();
-    const float currentSinkRate = getEstimatedActualVelocity(Z);
+    const float currentAirSpeedFloat = getAirspeedEstimate();
+    const float currentSinkRateFloat = getEstimatedActualVelocity(Z);
 
-    updatePolarBinWidth(currentAirSpeed);
+    const int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedFloat);  // Round to nearest integer for binning
+    const int32_t currentSinkRate = (int32_t)lroundf(currentSinkRateFloat);  // Round to nearest integer for binning
+
+    updatePolarBinWidth(currentAirSpeed);  // Update bin width based on current airspeed
     uint8_t binIndex = getPolarBinIndexForGivenSpeed(currentAirSpeed);
     if (binIndex >= POLAR_BIN_COUNT) {
         return;  // Index out of range, skip
