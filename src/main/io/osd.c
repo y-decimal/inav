@@ -2374,6 +2374,60 @@ static bool osdDrawSingleElement(uint8_t item)
             break;
         }
 
+    case OSD_MIN_SINK_RATE:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            buff[0] = SYM_MS;
+            if (minSinkRate < 0.0f && minSinkRate > -100.0f && isDataValidGlide()) {
+                osdFormatCentiNumber(buff + 1, -minSinkRate * 100.0f, 0, 2, 0, 3, false);
+            } else {
+                buff[1] = buff[2] = buff[3] = '-';
+            }
+            buff[4] = '\0';
+            break;
+        } 
+
+    case OSD_MIN_SINK_SPEED:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            buff[0] = SYM_KMH;
+            if (minSinkSpeed > 0.0f && minSinkSpeed < 100.0f && isDataValidGlide()) {
+                int32_t minSinkSpeedConverted = osdConvertVelocityToUnit(minSinkSpeed);
+                osdFormatCentiNumber(buff + 1, minSinkSpeedConverted, 0, 2, 0, 3, false);
+            } else {
+                buff[1] = buff[2] = buff[3] = '-';
+            }
+            buff[4] = '\0';
+            break;
+        }
+
+    case OSD_BEST_GLIDE_RATIO:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            buff[0] = SYM_GLIDE;
+            if (bestGlideRatio > 0.0f && bestGlideRatio < 100.0f && isDataValidGlide()) {
+                osdFormatCentiNumber(buff + 1, bestGlideRatio * 100.0f, 0, 2, 0, 3, false);
+            } else {
+                buff[1] = buff[2] = buff[3] = '-';
+            }
+            buff[4] = '\0';
+            break;
+        }
+    
+    case OSD_BEST_GLIDE_SPEED:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            buff[0] = SYM_KMH;
+            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 100.0f && isDataValidGlide()) {
+                int32_t bestGlideSpeedConverted = osdConvertVelocityToUnit(bestGlideSpeed);
+                osdFormatCentiNumber(buff + 1, bestGlideSpeedConverted, 0, 2, 0, 3, false);
+            } else {
+                buff[1] = buff[2] = buff[3] = '-';
+            }
+            buff[4] = '\0';
+            break;
+        }
+
     case OSD_GPS_LAT:
         osdFormatCoordinate(buff, SYM_LAT, gpsSol.llh.lat);
         break;
