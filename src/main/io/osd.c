@@ -217,6 +217,10 @@ static float currentGlideRatio = 0.0f;
 static bool glideRatioRequired = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
 static uint8_t glideRatioSampleTimeFrame = 5;
 
+static bool polarRequired = false; // Whether any polar element is enabled, used to determine whether polar calculation needs to be performed
+static float polarBinWidth = 0.0f; // Width of each polar bin in m/s, calculated based on measured min/max airspeed and number of polar bins
+
+
 static statistic_t stats;
 
 static timeUs_t resumeRefreshAt = 0;
@@ -1998,6 +2002,38 @@ static void enableGlideRatioCalculation(void) {
         }
         updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
     }
+}
+
+// Update polar bin width based on current airspeed and glide conditions, return the current polar bin index for the given airspeed
+// Returns 255 if data is not valid for glide conditions
+static uint8_t getPolarBinIndex(float currentAirSpeed) {
+
+    if (!isDataValidGlide()) {
+        return 255;  // Data not from valid glide conditions, skip
+    }
+
+    static float minAirSpeed = 0.0f;
+    static float maxAirSpeed = 0.0f;
+
+    if (currentAirSpeed < minAirSpeed) {
+        minAirSpeed = minAirSpeed*0.9f + currentAirSpeed*0.1f;  // Smooth minimum airspeed
+    } else if (currentAirSpeed > maxAirSpeed) {
+        maxAirSpeed = maxAirSpeed*0.9f + currentAirSpeed*0.1f;  // Smooth maximum airspeed
+    }
+
+    if (maxAirSpeed - minAirSpeed < 3.0f) {
+        maxAirSpeed = minAirSpeed + 3.0f;  // Ensure a sane minimum range 
+    }
+
+    static float newPolarBinWidth = (maxAirSpeed - minAirSpeed) / POLAR_BIN_COUNT;
+
+    if (fabsf(newPolarBinWidth - polarBinWidth) > 0.1f) { // Update bin width if it has changed significantly
+        polarBinWidth = newPolarBinWidth;
+    }
+
+    static uint8_t polarBinIndex = (uint8_t)((currentAirSpeed - minAirSpeed) / polarBinWidth);
+    polarBinIndex = constrain(polarBinIndex, 0, POLAR_BIN_COUNT - 1);
+    return polarBinIndex;
 }
 
 static bool osdDrawSingleElement(uint8_t item)
