@@ -1842,20 +1842,19 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
 }
 
 static bool isDataValidForGlideRatio(void) {
-    // Check if we have been ascending for more than 4 seconds, which would indicate that the glide ratio is not valid
-    static timeMs_t lastDescentTime = 0;
-    if (getEstimatedActualVelocity(Z) < 0) {  // Descending
-        lastDescentTime = millis();
-    } else if (millis() - lastDescentTime > 4000) {  // Not descending for more than 4 seconds
+    static timeMs_t lastInvalidTime = 0;
+    const timeMs_t now = millis();
+
+    if (getThrottlePercent(true) > 10 ||    
+        getEstimatedActualVelocity(Z) > 0 ||
+        ABS(attitude.values.roll) > 200 ||
+        ABS(attitude.values.pitch) > 300 ||) 
+    {     
+        lastInvalidTime = now;
         return false;
     }
 
-    // Check if the throttle is above a certain threshold, which would indicate that we are under power and the glide ratio is not valid
-    if (getThrottlePercent(true) > 10) { 
-        return false;
-    }
-
-    return true;
+    return (now - lastInvalidTime) > 3000;  // Require 3 seconds of valid conditions before considering data valid for glide ratio
 }
 
 
