@@ -6138,6 +6138,10 @@ static void osdRefresh(timeUs_t currentTimeUs)
         updateGlideRatioCalculation();
     }
 
+    if (polarRequired) {
+        updatePolarCalculation();
+    }
+
 #ifdef USE_CMS
     if (IS_RC_MODE_ACTIVE(BOXOSD) && (!cmsInMenu) && !(osdConfig()->osd_failsafe_switch_layout && FLIGHT_MODE(FAILSAFE_MODE))) {
 #else
