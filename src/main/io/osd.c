@@ -193,15 +193,23 @@ typedef struct statistic_s {
 
 #define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 #define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
+#define POLAR_BIN_COUNT 20
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
     int32_t altitude_cm;     // Altitude
 } glidePositionSample_t;
 
+typedef struc polarBin_s {
+    float sinkRateSum;
+    uint8_t sampleCount;
+} polarBin_t;
 
 // Fixed-size glide buffer
 static glidePositionSample_t glideBuffer[GLIDE_RATIO_SAMPLE_BUFFER_SIZE];
+
+// Fixes-size polar bin buffer
+static polarBin_t polarBins[POLAR_BIN_COUNT];
 
 // Calculated glide ratio (distance per unit altitude descent)
 // Available for use by multiple OSD elements
