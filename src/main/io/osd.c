@@ -2043,6 +2043,12 @@ static uint8_t getPolarBinIndexForGivenSpeed(float airSpeed) {
     return polarBinIndex;
 }
 
+static float convertBinIndexToAirspeed(uint8_t binIndex) {
+    return minGlideAirSpeed + (binIndex + 0.5f) * polarBinWidth;  // Return the center airspeed of the bin
+}
+
+
+
 static void updateGlidePolarData() {
 
     if (!isDataValidGlide()) {
