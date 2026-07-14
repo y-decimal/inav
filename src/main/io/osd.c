@@ -201,7 +201,7 @@ typedef struct glidePositionSample_s {
 } glidePositionSample_t;
 
 typedef struc polarBin_s {
-    float sinkRateSum;
+    float sinkRateAverage;  // Average sink rate for this polar bin
     uint8_t sampleCount;
 } polarBin_t;
 
@@ -219,7 +219,7 @@ static uint8_t glideRatioSampleTimeFrame = 5;
 
 static bool polarRequired = false; // Whether any polar element is enabled, used to determine whether polar calculation needs to be performed
 static float polarBinWidth = 0.0f; // Width of each polar bin in m/s, calculated based on measured min/max airspeed and number of polar bins
-
+static float sinkRateSmoothingAlpha = 0.1f; // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
 
 static statistic_t stats;
 
