@@ -2024,7 +2024,7 @@ static void updatePolarBinWidth(float currentAirSpeed) {
         maxGlideAirSpeed = minGlideAirSpeed + 3.0f;  // Ensure a sane minimum range 
     }
 
-    static float newPolarBinWidth = (maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT;
+    float newPolarBinWidth = (maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT;
 
     if (fabsf(newPolarBinWidth - polarBinWidth) > 0.1f) { // Update bin width if it has changed significantly
         polarBinWidth = newPolarBinWidth;
@@ -2038,7 +2038,7 @@ static uint8_t getPolarBinIndexForGivenSpeed(float airSpeed) {
         return 0;  // Avoid division by zero (returns first bin instead of sentinel value to avoid accidental out of bounds buffer access)
     }
 
-    static uint8_t polarBinIndex = (uint8_t)((airSpeed - minGlideAirSpeed) / polarBinWidth);
+    uint8_t polarBinIndex = (uint8_t)((airSpeed - minGlideAirSpeed) / polarBinWidth);
     polarBinIndex = constrain(polarBinIndex, 0, POLAR_BIN_COUNT - 1);
     return polarBinIndex;
 }
