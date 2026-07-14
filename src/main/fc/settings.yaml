@@ -3904,6 +3904,13 @@ groups:
         field: osd_switch_indicators_align_left
         type: bool
         default_value: ON
+      - name: osd_glide_sample_time_frame
+        description: "Over how long of a time window the glide ratio is calculated. The longer the time frame, the more stable the glide ratio will be, but it will also be less responsive to changes in flight conditions."
+        field: glide_sample_time_frame
+        type: uint8_t
+        min: 5
+        max: 60
+        default_value: 10
 
   - name: PG_OSD_COMMON_CONFIG
     type: osdCommonConfig_t

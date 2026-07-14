@@ -191,6 +191,24 @@ typedef struct statistic_s {
     int32_t flightStartMWh;
 } statistic_t;
 
+#define GLIDE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
+#define GLIDE_MAX_SAMPLE_RATE_HZ 4
+
+typedef struct glidePositionSample_s {
+    uint32_t distance_cm;    // Total travel distance
+    int32_t altitude_cm;     // Altitude
+} glidePositionSample_t;
+
+
+// Fixed-size glide buffer
+static glidePositionSample_t glideBuffer[GLIDE_BUFFER_SIZE];
+
+// Calculated glide ratio (distance per unit altitude descent)
+// Available for use by multiple OSD elements
+static float currentGlideRatio = 0.0f;
+static bool useGlideElement = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
+static uint8_t glideSampleTimeFrame = 5;
+
 static statistic_t stats;
 
 static timeUs_t resumeRefreshAt = 0;
@@ -4412,7 +4430,8 @@ PG_RESET_TEMPLATE(osdConfig_t, osdConfig,
     .stats_page_auto_swap_time = SETTING_OSD_STATS_PAGE_AUTO_SWAP_TIME_DEFAULT,
     .stats_show_metric_efficiency = SETTING_OSD_STATS_SHOW_METRIC_EFFICIENCY_DEFAULT,
 
-    .radar_peers_display_time = SETTING_OSD_RADAR_PEERS_DISPLAY_TIME_DEFAULT
+    .radar_peers_display_time = SETTING_OSD_RADAR_PEERS_DISPLAY_TIME_DEFAULT,
+    .glide_sample_time_frame = SETTING_OSD_GLIDE_SAMPLE_TIME_FRAME_DEFAULT
 );
 
 void pgResetFn_osdLayoutsConfig(osdLayoutsConfig_t *osdLayoutsConfig)
