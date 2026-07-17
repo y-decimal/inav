@@ -2174,7 +2174,12 @@ static void updateGlidePolarData(void) {
     }
 
     // Update the polar data for this bin
-    polarBins[binIndex].sinkRateAverage = polarBins[binIndex].sinkRateAverage * (1-sinkRateSmoothingAlpha) + currentSinkRate * sinkRateSmoothingAlpha;  // Smooth the sink rate
+    float sampleCount = (float)polarBins[binIndex].sampleCount;  // Adjust alpha based on sample count to avoid over-smoothing early on
+    float scaledAlpha = 1.0f - sampleCount / 10.0f;  // Start with alpha = 1.0 for first sample, then decrease to 0.1 as sample count approaches 10
+    if (scaledAlpha <  sinkRateSmoothingAlpha) {
+        scaledAlpha = sinkRateSmoothingAlpha;  // Don't go below configured smoothing alpha
+    }
+    polarBins[binIndex].sinkRateAverage = polarBins[binIndex].sinkRateAverage * (1-scaledAlpha) + currentSinkRate * scaledAlpha;  // Smooth the sink rate
     if (polarBins[binIndex].sampleCount < UINT8_MAX) {
         polarBins[binIndex].sampleCount++;  // Increment sample count, but don't overflow
     }
