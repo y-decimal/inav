@@ -2447,7 +2447,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_RATE:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkRate < 0.0f && minSinkRate > -100.0f && isDataValidGlide()) {
+            if (minSinkRate > 0.0f && minSinkRate < 100.0f && isDataValidGlide()) {
                 osdFormatVerticalSpeedStr(buff, (int32_t)lrintf(-minSinkRate));
             } else {
                 buff[0] = buff[1] = buff[2] = '-';
