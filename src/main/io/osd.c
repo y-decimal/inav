@@ -2447,7 +2447,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_RATE:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkRate > 0.0f && minSinkRate < 100.0f && isDataValidGlide()) {
+            if (minSinkRate > 0.0f && minSinkRate < 1000.0f) {
                 osdFormatVerticalSpeedStr(buff, (int32_t)lrintf(-minSinkRate));
             } else {
                 buff[0] = buff[1] = buff[2] = '-';
@@ -2460,7 +2460,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkSpeed > 0.0f && minSinkSpeed < 5000.0f && isDataValidGlide()) {
+            if (minSinkSpeed > 0.0f && minSinkSpeed < 5000.0f) {
                 int32_t minSinkSpeedConverted = osdConvertVelocityToUnit(minSinkSpeed);
                 osdFormatCentiNumber(buff, minSinkSpeedConverted, 0, 2, 0, 3, false);
                 buff[3] = osdVelocityUnitSymbol();
@@ -2477,7 +2477,7 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (bestGlideRatio > 0.0f && bestGlideRatio < 100.0f && isDataValidGlide()) {
+            if (bestGlideRatio > 0.0f && bestGlideRatio < 100.0f) {
                 osdFormatCentiNumber(buff + 1, bestGlideRatio * 100.0f, 0, 2, 0, 3, false);
             } else {
                 buff[1] = buff[2] = buff[3] = '-';
@@ -2489,7 +2489,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 5000.0f && isDataValidGlide()) {
+            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 5000.0f) {
                 int32_t bestGlideSpeedConverted = osdConvertVelocityToUnit(bestGlideSpeed);
                 osdFormatCentiNumber(buff, bestGlideSpeedConverted, 0, 2, 0, 3, false);
                 buff[3] = osdVelocityUnitSymbol();
