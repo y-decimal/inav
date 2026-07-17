@@ -2460,7 +2460,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkSpeed > 0.0f && minSinkSpeed < 100.0f && isDataValidGlide()) {
+            if (minSinkSpeed > 0.0f && minSinkSpeed < 5000.0f && isDataValidGlide()) {
                 int32_t minSinkSpeedConverted = osdConvertVelocityToUnit(minSinkSpeed);
                 osdFormatCentiNumber(buff, minSinkSpeedConverted, 0, 2, 0, 3, false);
                 buff[3] = osdVelocityUnitSymbol();
@@ -2489,7 +2489,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 100.0f && isDataValidGlide()) {
+            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 5000.0f && isDataValidGlide()) {
                 int32_t bestGlideSpeedConverted = osdConvertVelocityToUnit(bestGlideSpeed);
                 osdFormatCentiNumber(buff, bestGlideSpeedConverted, 0, 2, 0, 3, false);
                 buff[3] = osdVelocityUnitSymbol();
