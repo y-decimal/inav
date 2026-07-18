@@ -212,6 +212,11 @@ typedef struct polarBin_s {
     float confidence;         // Confidence level for this polar bin
 } polarBin_t;
 
+typedef struct speedRange_s {
+    int32_t speedRangeFloor;
+    int32_t speedRangeCeiling;
+} speedRange_t;
+
 // Fixed-size glide buffer
 static glidePositionSample_t glideBuffer[GLIDE_RATIO_SAMPLE_BUFFER_SIZE];
 
@@ -229,9 +234,9 @@ static int32_t polarBinWidth = 0; // Width of each polar bin in cm/s, calculated
 static int32_t minGlideAirSpeed = 0; // Minimum airspeed in cm/s, calculated based on reference airspeed
 static int32_t maxGlideAirSpeed = 0; // Maximum airspeed in cm/s, calculated based on reference airspeed
 static int32_t minSinkRate = INT32_MAX; // Minimum sink rate in cm/s
-static int32_t minSinkSpeed = 0; // Minimum sink speed in cm/s
+static speedRange_t minSinkSpeed; // Minimum sink speed in cm/s
 static float bestGlideRatio = 0.0f;
-static int32_t bestGlideSpeed = 0; // Best glide speed in cm/s
+static speedRange_t bestGlideSpeed; // Best glide speed in cm/s
 
 
 static statistic_t stats;
@@ -2116,9 +2121,26 @@ static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
 }
 
 static int32_t convertBinIndexToAirspeed(uint8_t binIndex) {
+    if (binIndex > POLAR_BIN_COUNT) {
+        return 0;
+    }
+
     int32_t aspd = minGlideAirSpeed + (int32_t)(binIndex * polarBinWidth);
     DEBUG_SET(DEBUG_GLIDE_OSD, 5, aspd);
     return aspd;
+}
+
+static speedRange_t convertBinIndexToSpeedRange(uint8_t binIndex) {
+
+    speedRange_t range;
+
+    uint8_t lowerIndex = binIndex < 2 ? 0 : binIndex - 1;
+    uint8_t upperIndex = binIndex >= POLAR_BIN_COUNT - 1 ? POLAR_BIN_COUNT - 1 : binIndex + 1;
+
+    range.speedRangeFloor = convertBinIndexToAirspeed(lowerIndex);
+    range.speedRangeCeiling = convertBinIndexToAirspeed(upperIndex);
+
+    return range;
 }
 
 static void updateMinimumSinkRateAndSpeed(void) {
@@ -2134,13 +2156,13 @@ static void updateMinimumSinkRateAndSpeed(void) {
         if (polarBins[minSinkRateBinIndex].confidence > 0.5f && currentSinkRate > 0) {
             if (currentSinkRate < minSinkRate) {
                 minSinkRate = currentSinkRate;
-                minSinkSpeed = convertBinIndexToAirspeed(minSinkRateBinIndex);
+                minSinkSpeed = convertBinIndexToSpeedRange(minSinkRateBinIndex);
             }
         }
     }
 
     DEBUG_SET(DEBUG_GLIDE_OSD, 0, minSinkRate);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 1, minSinkSpeed);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 1, minSinkSpeed.speedRangeFloor);
 }
 
 static void updateBestGlideRatioAndSpeed(void) {
@@ -2159,14 +2181,14 @@ static void updateBestGlideRatioAndSpeed(void) {
 
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
-                bestGlideSpeed = convertBinIndexToAirspeed(bestGlideBinIndex);
+                bestGlideSpeed = convertBinIndexToSpeedRange(bestGlideBinIndex);
             }
         }
     }
 
     float scaledBestGlideRatio = bestGlideRatio * 100.0f;  // Scale for integer representation
     DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)lrintf(scaledBestGlideRatio));
-    DEBUG_SET(DEBUG_GLIDE_OSD, 3, bestGlideSpeed);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 3, bestGlideSpeed.speedRangeFloor);
 }
 
 static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t deltaTimeMs) {
@@ -2516,13 +2538,16 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkSpeed > 0 && minSinkSpeed < 5000) {
-                osdFormatVelocityStr(buff, minSinkSpeed, OSD_SPEED_TYPE_AIR, false);
-            } else {
-                buff[0] = buff[1] = buff[2] = '-';
-                buff[3] = osdVelocityUnitSymbol();
-                buff[4] = '\0';
+            if (minSinkSpeed.speedRangeFloor > 0 && minSinkSpeed.speedRangeCeiling < 5000) {
+               osdFormatCentiNumber(buff, osdConvertVelocityToUnit(minSinkSpeed.speedRangeFloor) * 100, 0, 0, 0, 2, true);
+               buff[2] = '-';
+               osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(minSinkSpeed.speedRangeCeiling) * 100, 0, 0, 0, 2, true);
+               buff[5] = osdVelocityUnitSymbol();
+           } else {
+                buff[0] = buff[1] = buff[2] = buff[3] = buff[4] = '-';
+                buff[5] = osdVelocityUnitSymbol();
             }
+            buff[6] = '\0';
             break;
         }
 
@@ -2542,13 +2567,16 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (bestGlideSpeed > 0 && bestGlideSpeed < 5000) {
-                osdFormatVelocityStr(buff, bestGlideSpeed, OSD_SPEED_TYPE_AIR, false);
+            if (bestGlideSpeed.speedRangeFloor > 0 && bestGlideSpeed.speedRangeCeiling < 7500) {
+                osdFormatCentiNumber(buff, osdConvertVelocityToUnit(bestGlideSpeed.speedRangeFloor) * 100, 0, 0, 0, 2, true);
+                buff[2] = '-';
+                osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(bestGlideSpeed.speedRangeCeiling) * 100, 0, 0, 0, 2, true);
+                buff[5] = osdVelocityUnitSymbol();
             } else {
-                buff[0] = buff[1] = buff[2] = '-';
-                buff[3] = osdVelocityUnitSymbol();
-                buff[4] = '\0';
+                buff[0] = buff[1] = buff[2] = buff[3] = buff[4] = '-';
+                buff[5] = osdVelocityUnitSymbol();
             }
+            buff[6] = '\0';
             break;
         }
 
