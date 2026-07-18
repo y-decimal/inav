@@ -1931,25 +1931,33 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
 static bool isDataValidGlide(void) {
     static timeMs_t lastInvalidTime = 0;
     static timeMs_t lastCallTime = 0;
-    static float lastSpeed = 0;
-    static float filteredSpeed = 0;
+    static float lastAirspeed = 0;
+    static float filteredAirspeed = 0;
+    static float lastVerticalSpeed = 0;
+    static float filteredVerticalSpeed = 0;
 
     const timeMs_t now = millis();
     const timeMs_t deltaTime = now - lastCallTime;
     lastCallTime = now;
 
-    filteredSpeed = lastSpeed * 0.7f + getAirspeedEstimate() * 0.3f;
-    const float deltaSpeed = filteredSpeed - lastSpeed;
+    filteredAirspeed = lastAirspeed * 0.7f + getAirspeedEstimate() * 0.3f;
+    filteredVerticalSpeed = lastVerticalSpeed * 0.7f + getEstimatedActualVelocity(Z) * 0.3f;
 
-    const float acceleration = deltaSpeed * 1000.0f / MAX(deltaTime, 1UL);  // cm/s²
-    lastSpeed = filteredSpeed;
+    const float deltaAirspeed = filteredAirspeed - lastAirspeed;
+    const float deltaVerticalSpeed = filteredVerticalSpeed - lastVerticalSpeed;
+
+    const float horizontalAcceleration = deltaAirspeed * 1000.0f / MAX(deltaTime, 1UL);  // cm/s²
+    const float verticalAcceleration = deltaVerticalSpeed * 1000.0f / MAX(deltaTime, 1UL);  // cm/s²
+    lastAirspeed = filteredAirspeed;
+    lastVerticalSpeed = filteredVerticalSpeed;
 
 
     if (getThrottlePercent(true) > 10 ||    
         getEstimatedActualVelocity(Z) > 0 ||
         ABS(attitude.values.roll) > 200 ||
         ABS(attitude.values.pitch) > 300 ||
-        fabsf(acceleration) > 300)  // More than 300cm/s² (3 m/s²) acceleration
+        fabsf(horizontalAcceleration) > 300 ||  // More than 300cm/s² (3 m/s²) horizontal acceleration
+        fabsf(verticalAcceleration) > 100)      // More than 100cm/s² vertical acceleration
     {     
         lastInvalidTime = now;
         return false;
