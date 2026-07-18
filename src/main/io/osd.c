@@ -2532,6 +2532,8 @@ static bool osdDrawSingleElement(uint8_t item)
                 buff[3] = osdVerticalSpeedUnitSymbol();
                 buff[4] = '\0';
             }
+
+            buff[4] = '\0';
             break;
         } 
 
