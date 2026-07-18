@@ -193,14 +193,14 @@ typedef struct statistic_s {
 
 #define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 #define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
-#define POLAR_BIN_COUNT 30
-#define POLAR_BIN_RANGE 2.0f // Range of how far from reference airspeed the polar bin covers as a fraction of reference airspeed, e.g. 2.0 = 200% of reference airspeed, so a reference airspeed of 100cm/s would have a polar bin range of 0cm/s to 200cm/s
+#define POLAR_BIN_COUNT 60
+#define POLAR_BIN_RANGE 1.75f // Range of how far from reference airspeed the polar bin covers as a fraction of reference airspeed, e.g. 2.0 = 200% of reference airspeed, so a reference airspeed of 100cm/s would have a polar bin range of 0cm/s to 200cm/s
 #define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
 #define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
-#define POLAR_BIN_BLENDING_WIDTH 40 // Width of the blending region between polar bins in cm/s. Recommended to be set to the lowest possible precision with which an airspeed can be held
+#define POLAR_BIN_BLENDING_WIDTH 60 // Width of the blending region between polar bins in cm/s. Recommended to be set to the lowest possible precision with which an airspeed can be held
 #define POLAR_BIN_BLENDING_FACTOR 0.75f // How strong the blending should be - 0 is no blending and 1 is full blending
 #define POLAR_BIN_TIME_TO_FULL_CONFIDENCE 30 // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
-#define POLAR_BIN_TIME_TO_NO_CONFIDENCE 300 // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
+#define POLAR_BIN_TIME_TO_NO_CONFIDENCE 1200 // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
