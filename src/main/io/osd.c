@@ -2184,8 +2184,8 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
         if (scaledAlpha <  SINK_RATE_SMOOTHING_ALPHA) {
             scaledAlpha = SINK_RATE_SMOOTHING_ALPHA;  // Don't go below configured smoothing alpha
         }
-
-        float blendingAlphaScalar = 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) );
+ 
+        float blendingAlphaScalar = constrainf( 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) ), 0.0f, 1.0f);
 
         scaledAlpha *= blendingAlphaScalar;  // Reduce alpha for bins further away from the current airspeed bin
         polarBins[index].sinkRateAverage = polarBins[index].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
