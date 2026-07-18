@@ -2115,6 +2115,8 @@ static int32_t convertBinIndexToAirspeed(uint8_t binIndex) {
 static void updateMinimumSinkRateAndSpeed(void) {
 
     uint8_t minSinkRateBinIndex;
+    
+    minSinkRate = INT32_MAX;
 
     for (minSinkRateBinIndex = 0; minSinkRateBinIndex < POLAR_BIN_COUNT; minSinkRateBinIndex++) {
 
@@ -2136,6 +2138,8 @@ static void updateBestGlideRatioAndSpeed(void) {
 
     uint8_t bestGlideBinIndex;
 
+    bestGlideRatio = 0.0f;
+
     for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
 
         int32_t currentSinkRate = polarBins[bestGlideBinIndex].sinkRateAverage;
@@ -2143,7 +2147,7 @@ static void updateBestGlideRatioAndSpeed(void) {
         if (polarBins[bestGlideBinIndex].confidence > 0.5f && currentSinkRate > 0) {
 
             float glideRatio = (float)convertBinIndexToAirspeed(bestGlideBinIndex) / (float)currentSinkRate;
-            
+
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
                 bestGlideSpeed = convertBinIndexToAirspeed(bestGlideBinIndex);
