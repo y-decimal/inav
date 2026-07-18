@@ -197,7 +197,8 @@ typedef struct statistic_s {
 #define POLAR_BIN_RANGE 2.0f // Range of how far from reference airspeed the polar bin covers as a fraction of reference airspeed, e.g. 2.0 = 200% of reference airspeed, so a reference airspeed of 100cm/s would have a polar bin range of 0cm/s to 200cm/s
 #define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
 #define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
-#define POLAR_BIN_BLENDING_WIDTH 2 // Width of the blending region between polar bins as the amount of additional bins blended each direction, used to blend sink rate values between adjacent polar bins to reduce noise and improve accuracy
+#define POLAR_BIN_BLENDING_WIDTH 40 // Width of the blending region between polar bins in cm/s. Recommended to be set to the lowest possible precision with which an airspeed can be held
+#define POLAR_BIN_BLENDING_FACTOR 0.75f // How strong the blending should be - 0 is no blending and 1 is full blending
 #define POLAR_BIN_TIME_TO_FULL_CONFIDENCE 30 // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
 #define POLAR_BIN_TIME_TO_NO_CONFIDENCE 300 // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
 
@@ -2170,18 +2171,20 @@ static void updateBestGlideRatioAndSpeed(void) {
 
 static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t deltaTimeMs) {
 
-    uint8_t binIndex = getPolarBinIndexForGivenSpeed(airspeed);
+    const uint8_t binIndex = getPolarBinIndexForGivenSpeed(airspeed);
     if (binIndex >= POLAR_BIN_COUNT) {
         return;  // Index out of range, skip
     }
 
     // Update the polar data for this bin
 
-    uint8_t blendingIndexFloor = MAX(binIndex - POLAR_BIN_BLENDING_WIDTH, 0);
-    uint8_t blendingIndexCeiling = MIN(binIndex + POLAR_BIN_BLENDING_WIDTH, POLAR_BIN_COUNT - 1);
+    const uint8_t blendingWidthInBins = MAX(POLAR_BIN_BLENDING_WIDTH / polarBinWidth, 1);
 
-    float confidenceDecay = (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_NO_CONFIDENCE * 1000.0f));         // Decay confidence based on time between samples and configured decay
-    float confidenceIncrement = (float)deltaTimeMs / (float)(POLAR_BIN_TIME_TO_FULL_CONFIDENCE * 1000.0f);     // Increment confidence based on time between samples and configured gain
+    const uint8_t blendingIndexFloor = MAX(binIndex - blendingWidthInBins, 0);
+    const uint8_t blendingIndexCeiling = MIN(binIndex + blendingWidthInBins, POLAR_BIN_COUNT - 1);
+
+    const float confidenceDecay = (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_NO_CONFIDENCE * 1000.0f));         // Decay confidence based on time between samples and configured decay
+    const float confidenceIncrement = (float)deltaTimeMs / (float)(POLAR_BIN_TIME_TO_FULL_CONFIDENCE * 1000.0f);     // Increment confidence based on time between samples and configured gain
 
     for (uint8_t index = blendingIndexFloor; index < blendingIndexCeiling; index++) {
 
@@ -2189,8 +2192,9 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
         if (polarBins[index].confidence > 0.0f) {
             scaledAlpha = constrainf(SINK_RATE_SMOOTHING_ALPHA * (1.0f / polarBins[index].confidence), SINK_RATE_SMOOTHING_ALPHA, 1.0f);  // Increase smoothing alpha for low confidence bins to make them adapt faster
         }
- 
-        float blendingAlphaScalar = constrainf( 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) ), 0.0f, 1.0f);
+        float blendingAlphaScalar = 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) );
+        blendingAlphaScalar *= POLAR_BIN_BLENDING_FACTOR;
+        blendingAlphaScalar = constrainf(blendingAlphaScalar, 0.0f, 1.0f);
 
         scaledAlpha *= blendingAlphaScalar;  // Reduce alpha for bins further away from the current airspeed bin
         polarBins[index].sinkRateAverage = polarBins[index].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
