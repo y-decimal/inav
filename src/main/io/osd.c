@@ -456,17 +456,18 @@ static void osdFormatDistanceStr(char *buff, int32_t dist)
  */
 static int32_t osdConvertVelocityToUnit(int32_t vel)
 {
+    float velFloat = (float)vel;
     switch ((osd_unit_e)osdConfig()->units) {
     case OSD_UNIT_UK:
         FALLTHROUGH;
     case OSD_UNIT_METRIC_MPH:
         FALLTHROUGH;
     case OSD_UNIT_IMPERIAL:
-        return CMSEC_TO_CENTIMPH(vel) / 100; // Convert to mph
+        return int32_t(CMSEC_TO_CENTIMPH(velFloat) / 100.0f); // Convert to mph
     case OSD_UNIT_METRIC:
-        return CMSEC_TO_CENTIKPH(vel) / 100;   // Convert to kmh
+        return int32_t(CMSEC_TO_CENTIKPH(velFloat) / 100.0f);   // Convert to kmh
     case OSD_UNIT_GA:
-        return CMSEC_TO_CENTIKNOTS(vel) / 100; // Convert to Knots
+        return int32_t(CMSEC_TO_CENTIKNOTS(velFloat) / 100.0f); // Convert to Knots
     }
     // Unreachable
     return -1;
