@@ -1949,7 +1949,7 @@ static bool isDataValidGlide(void) {
         getEstimatedActualVelocity(Z) > 0 ||
         ABS(attitude.values.roll) > 200 ||
         ABS(attitude.values.pitch) > 300 ||
-        fabsf(acceleration) > 150)  // More than 150cm/s² (1.5 m/s²) acceleration
+        fabsf(acceleration) > 300)  // More than 300cm/s² (3 m/s²) acceleration
     {     
         lastInvalidTime = now;
         return false;
@@ -2102,13 +2102,13 @@ static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
 
     uint8_t polarBinIndex = (uint8_t)((airspeedInCMS - minGlideAirSpeed) / polarBinWidth);
     polarBinIndex = constrain(polarBinIndex, 0, POLAR_BIN_COUNT - 1);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 5, polarBinIndex);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 4, polarBinIndex);
     return polarBinIndex;
 }
 
 static int32_t convertBinIndexToAirspeed(uint8_t binIndex) {
     int32_t aspd = minGlideAirSpeed + (int32_t)(binIndex * polarBinWidth);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 6, aspd);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 5, aspd);
     return aspd;
 }
 
@@ -2148,21 +2148,26 @@ static void updateBestGlideRatioAndSpeed(void) {
 static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t deltaTimeMs) {
 
     uint8_t binIndex = getPolarBinIndexForGivenSpeed(airspeed);
-    if (binIndex >= POLAR_BIN_COUNT) {
+    if (binIndex <= 1 || binIndex >= POLAR_BIN_COUNT) {
         return;  // Index out of range, skip
     }
 
     uint8_t binIndexBlendRange = POLAR_BIN_BLENDING_WIDTH / polarBinWidth;
+    if (binIndexBlendRange < 2) {
+        binIndexBlendRange = 2;  // Ensure at least two bins are blended
+    }
 
     // Update the polar data for this bin
 
     int8_t blendOffset = binIndexBlendRange/2;
     int8_t blendedBinIndex = binIndex - blendOffset;
 
-    for (int8_t index = 0; index <= POLAR_BIN_COUNT; index++) {
+    float confidenceDecay = deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_NO_CONFIDENCE * 1000.0f));  // Decay confidence based on time between samples and configured decay
+    float confidenceIncrement = deltaTimeMs / (float)(POLAR_BIN_TIME_TO_FULL_CONFIDENCE * 1000.0f);  // Increment confidence based on time between samples and configured gain
+  
+    for (int8_t index = 0; index < POLAR_BIN_COUNT; index++) {
 
         if (index < blendedBinIndex || index > blendedBinIndex + binIndexBlendRange) {
-            float confidenceDecay = deltaTimeMs / (POLAR_BIN_TIME_TO_NO_CONFIDENCE * 1000.0f);  // Decay confidence based on time between samples and configured decay
             polarBins[index].confidence -= confidenceDecay;  // Decay confidence for bins outside the blending range
             if (polarBins[index].confidence < 0.05f) {
                 polarBins[index].confidence = 0.0f;  // Avoid very small confidence
@@ -2182,10 +2187,14 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
         scaledAlpha *= (1.0f - blendWeightAlphaScalar);  // Reduce alpha for bins further away from the current airspeed bin
         polarBins[blendedBinIndex].sinkRateAverage = polarBins[blendedBinIndex].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
         if (polarBins[blendedBinIndex].confidence < 1.0f) {
-            float confidenceIncrement = deltaTimeMs / (POLAR_BIN_TIME_TO_FULL_CONFIDENCE * 1000.0f);  // Increment confidence based on time between samples and configured gain
             polarBins[blendedBinIndex].confidence += confidenceIncrement;  // Gradually increase confidence as more samples are collected
         }
+
+        blendedBinIndex++;
     }
+
+    DEBUG_SET(DEBUG_GLIDE_OSD, 6, polarBins[binIndex].sinkRateAverage);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 7, (int32_t)(polarBins[binIndex].confidence * 100.0f));
 }
 
 static void refreshGlidePolar(void) {
@@ -2196,7 +2205,6 @@ static void refreshGlidePolar(void) {
     if (!isDataValidGlide() || (currentTime - lastUpdateTime < 1000)) {
         return;  // Data not valid for glide conditions, skip
     }
-    lastUpdateTime = currentTime;
 
     const float currentAirSpeedFloat = getAirspeedEstimate();
     const float currentSinkRateFloat = -getEstimatedActualVelocity(Z);  // Sink rate is positive downwards, so negate Z velocity
@@ -2209,6 +2217,7 @@ static void refreshGlidePolar(void) {
     updateMinimumSinkRateAndSpeed();
     updateBestGlideRatioAndSpeed();
 
+    lastUpdateTime = currentTime;
 }
 
 static void enableGlidePolarDataCollection(void) {
