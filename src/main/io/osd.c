@@ -2515,8 +2515,11 @@ static bool osdDrawSingleElement(uint8_t item)
             buff[0] = SYM_GLIDESLOPE;
             if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidGlide()) {
                 osdFormatCentiNumber(buff + 1, currentGlideRatio * 100.0f, 0, 2, 0, 3, false);
-            } else {
+            } else if (!isDataValidGlide()) {
                 buff[1] = buff[2] = buff[3] = '-';
+            }
+            else {
+                TEXT_ATTRIBUTES_ADD_BLINK(elemAttr);
             }
             buff[4] = '\0';
             break;
@@ -3678,15 +3681,18 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             int32_t altitude = osdGetAltitude();
             buff[0] = SYM_GLIDE_DIST;
-            if (currentGlideRatio <= 0.0f || altitude <= 0 || !isDataValidGlide()) {
+            if (currentGlideRatio > 0.0f && altitude > 0 && isDataValidGlide()) {
+                int32_t glideRangeCm = (int32_t)(currentGlideRatio * altitude);
+                osdFormatDistanceSymbol(buff + 1, glideRangeCm, 0, 3);
+            }
+            else if (!isDataValidGlide())
+            {  
                 tfp_sprintf(buff + 1, "%s%c", "---", SYM_BLANK);
                 buff[5] = '\0';
                 break;
             }
-            else
-            {
-                int32_t glideRangeCm = (int32_t)(currentGlideRatio * altitude);
-                osdFormatDistanceSymbol(buff + 1, glideRangeCm, 0, 3);
+            else {
+                TEXT_ATTRIBUTES_ADD_BLINK(elemAttr);
             }
             break;
         }
