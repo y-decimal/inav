@@ -2530,7 +2530,6 @@ static bool osdDrawSingleElement(uint8_t item)
             } else {
                 buff[0] = buff[1] = buff[2] = '-';
                 buff[3] = osdVerticalSpeedUnitSymbol();
-                buff[4] = '\0';
             }
 
             buff[4] = '\0';
