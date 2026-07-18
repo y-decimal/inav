@@ -198,7 +198,7 @@ typedef struct statistic_s {
 #define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
 #define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
 #define POLAR_BIN_BLENDING_WIDTH 100 // Width of the blending region between polar bins in cm/s, used to blend sink rate values between adjacent polar bins to reduce noise and improve accuracy
-#define POLAR_BIN_CONFIDENCE_GAIN_PER_SECOND 30 // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
+#define POLAR_BIN_TIME_TO_FULL_CONFIDENCE 30 // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
 #define POLAR_BIN_TIME_TO_NO_CONFIDENCE 300 // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
 
 typedef struct glidePositionSample_s {
@@ -1928,18 +1928,32 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
 
 static bool isDataValidGlide(void) {
     static timeMs_t lastInvalidTime = 0;
+    static timeMs_t lastCallTime = 0;
+    static float lastSpeed = 0;
+    static float filteredSpeed = 0;
+
     const timeMs_t now = millis();
+    const timeMs_t deltaTime = now - lastCallTime;
+    lastCallTime = now;
+
+    filteredSpeed = lastSpeed * 0.9f + getAirspeedEstimate() * 0.1f;
+    const float deltaSpeed = filteredSpeed - lastSpeed;
+
+    const float acceleration = (deltaSpeed * 1000.0f) / MAX(deltaTime, 1UL);  // cm/s²
+    lastSpeed = filteredSpeed;
+
 
     if (getThrottlePercent(true) > 10 ||    
         getEstimatedActualVelocity(Z) > 0 ||
         ABS(attitude.values.roll) > 200 ||
-        ABS(attitude.values.pitch) > 300) 
+        ABS(attitude.values.pitch) > 300 ||
+        fabsf(acceleration) > 150)  // More than 150cm/s² (1.5 m/s²) acceleration
     {     
         lastInvalidTime = now;
         return false;
     }
 
-    return (now - lastInvalidTime) > 3000;  // Require 3 seconds of valid conditions before considering data valid for glide ratio
+    return (now - lastInvalidTime) > 5000;  // Require 5 seconds of valid conditions before considering data valid for glide ratio
 }
 
 
@@ -2146,7 +2160,7 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
     for (int8_t index = 0; index <= POLAR_BIN_COUNT; index++) {
 
         if (index < blendedBinIndex || index > blendedBinIndex + binIndexBlendRange) {
-            float confidenceDecay = deltaTimeMs / (POLAR_BIN_CONFIDENCE_DECAY_PER_SECOND * 1000.0f);  // Decay confidence based on time between samples and configured decay
+            float confidenceDecay = deltaTimeMs / (POLAR_BIN_TIME_TO_NO_CONFIDENCE * 1000.0f);  // Decay confidence based on time between samples and configured decay
             polarBins[index].confidence -= confidenceDecay;  // Decay confidence for bins outside the blending range
             if (polarBins[index].confidence < 0.05f) {
                 polarBins[index].confidence = 0.0f;  // Avoid very small confidence
@@ -2166,7 +2180,7 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
         scaledAlpha *= (1.0f - blendWeightAlphaScalar);  // Reduce alpha for bins further away from the current airspeed bin
         polarBins[blendedBinIndex].sinkRateAverage = polarBins[blendedBinIndex].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
         if (polarBins[blendedBinIndex].confidence < 1.0f) {
-            float confidenceIncrement = deltaTimeMs / (POLAR_BIN_CONFIDENCE_GAIN_PER_SECOND * 1000.0f);  // Increment confidence based on time between samples and configured gain
+            float confidenceIncrement = deltaTimeMs / (POLAR_BIN_TIME_TO_FULL_CONFIDENCE * 1000.0f);  // Increment confidence based on time between samples and configured gain
             polarBins[blendedBinIndex].confidence += confidenceIncrement;  // Gradually increase confidence as more samples are collected
         }
     }
@@ -2472,7 +2486,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             if (minSinkSpeed > 0 && minSinkSpeed < 5000) {
                 int32_t minSinkSpeedConverted = osdConvertVelocityToUnit(minSinkSpeed);
-                osdFormatCentiNumber(buff, minSinkSpeedConverted * 100, 0, 2, 0, 3, false);
+                osdFormatCentiNumber(buff, minSinkSpeedConverted * 100, 0, 0, 0, 2, false);
                 buff[3] = osdVelocityUnitSymbol();
                 buff[4] = '\0';
             } else {
@@ -2501,7 +2515,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             if (bestGlideSpeed > 0 && bestGlideSpeed < 5000) {
                 int32_t bestGlideSpeedConverted = osdConvertVelocityToUnit(bestGlideSpeed);
-                osdFormatCentiNumber(buff, bestGlideSpeedConverted * 100, 0, 2, 0, 3, false);
+                osdFormatCentiNumber(buff, bestGlideSpeedConverted * 100, 0, 0, 0, 2, false);
                 buff[3] = osdVelocityUnitSymbol();
                 buff[4] = '\0';
             } else {
