@@ -457,17 +457,18 @@ static void osdFormatDistanceStr(char *buff, int32_t dist)
 static int32_t osdConvertVelocityToUnit(int32_t vel)
 {
     float velFloat = (float)vel;
+    
     switch ((osd_unit_e)osdConfig()->units) {
     case OSD_UNIT_UK:
         FALLTHROUGH;
     case OSD_UNIT_METRIC_MPH:
         FALLTHROUGH;
     case OSD_UNIT_IMPERIAL:
-        return int32_t(CMSEC_TO_CENTIMPH(velFloat) / 100.0f); // Convert to mph
+        return (int32_t)(CMSEC_TO_CENTIMPH(velFloat) / 100.0f); // Convert to mph
     case OSD_UNIT_METRIC:
-        return int32_t(CMSEC_TO_CENTIKPH(velFloat) / 100.0f);   // Convert to kmh
+        return (int32_t)(CMSEC_TO_CENTIKPH(velFloat) / 100.0f);   // Convert to kmh
     case OSD_UNIT_GA:
-        return int32_t(CMSEC_TO_CENTIKNOTS(velFloat) / 100.0f); // Convert to Knots
+        return (int32_t)(CMSEC_TO_CENTIKNOTS(velFloat) / 100.0f); // Convert to Knots
     }
     // Unreachable
     return -1;
@@ -1937,10 +1938,10 @@ static bool isDataValidGlide(void) {
     const timeMs_t deltaTime = now - lastCallTime;
     lastCallTime = now;
 
-    filteredSpeed = lastSpeed * 0.9f + getAirspeedEstimate() * 0.1f;
+    filteredSpeed = lastSpeed * 0.7f + getAirspeedEstimate() * 0.3f;
     const float deltaSpeed = filteredSpeed - lastSpeed;
 
-    const float acceleration = (deltaSpeed * 1000.0f) / MAX(deltaTime, 1UL);  // cm/s²
+    const float acceleration = deltaSpeed * 1000.0f / MAX(deltaTime, 1UL);  // cm/s²
     lastSpeed = filteredSpeed;
 
 
@@ -1954,7 +1955,7 @@ static bool isDataValidGlide(void) {
         return false;
     }
 
-    return (now - lastInvalidTime) > 5000;  // Require 5 seconds of valid conditions before considering data valid for glide ratio
+    return (now - lastInvalidTime) > 3000;  // Require 3 seconds of valid conditions before considering data valid for glide ratio
 }
 
 
