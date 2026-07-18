@@ -198,6 +198,8 @@ typedef struct statistic_s {
 #define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
 #define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
 #define POLAR_BIN_BLENDING_WIDTH 100 // Width of the blending region between polar bins in cm/s, used to blend sink rate values between adjacent polar bins to reduce noise and improve accuracy
+#define POLAR_BIN_CONFIDENCE_GAIN_PER_SECOND 30 // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
+#define POLAR_BIN_TIME_TO_NO_CONFIDENCE 300 // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -2127,7 +2129,7 @@ static void updateBestGlideRatioAndSpeed(void) {
     DEBUG_SET(DEBUG_GLIDE_OSD, 3, bestGlideSpeed);
 }
 
-static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate) {
+static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t deltaTimeMs) {
 
     uint8_t binIndex = getPolarBinIndexForGivenSpeed(airspeed);
     if (binIndex >= POLAR_BIN_COUNT) {
@@ -2138,11 +2140,19 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate) {
 
     // Update the polar data for this bin
 
-    for (int8_t blendOffset = -binIndexBlendRange; blendOffset <= binIndexBlendRange; blendOffset++) {
-        int8_t blendedBinIndex = binIndex + blendOffset;
+    int8_t blendOffset = binIndexBlendRange/2;
+    int8_t blendedBinIndex = binIndex - blendOffset;
 
-        if (blendedBinIndex < 0 || blendedBinIndex >= POLAR_BIN_COUNT || binIndexBlendRange <= 0) {
-            continue;  // Skip out-of-range bins
+    for (int8_t index = 0; index <= POLAR_BIN_COUNT; index++) {
+
+        if (index < blendedBinIndex || index > blendedBinIndex + binIndexBlendRange) {
+            float confidenceDecay = deltaTimeMs / (POLAR_BIN_CONFIDENCE_DECAY_PER_SECOND * 1000.0f);  // Decay confidence based on time between samples and configured decay
+            polarBins[index].confidence -= confidenceDecay;  // Decay confidence for bins outside the blending range
+            if (polarBins[index].confidence < 0.05f) {
+                polarBins[index].confidence = 0.0f;  // Avoid very small confidence
+                polarBins[index].sinkRateAverage = 0.0f;  // Reset sink rate for bins with no confidence
+            }
+            continue;
         }
 
         float blendWeightAlphaScalar = (float)ABS(blendOffset) / (float)binIndexBlendRange;
@@ -2156,7 +2166,8 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate) {
         scaledAlpha *= (1.0f - blendWeightAlphaScalar);  // Reduce alpha for bins further away from the current airspeed bin
         polarBins[blendedBinIndex].sinkRateAverage = polarBins[blendedBinIndex].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
         if (polarBins[blendedBinIndex].confidence < 1.0f) {
-            polarBins[blendedBinIndex].confidence += 0.05f;  // Gradually increase confidence as more samples are collected
+            float confidenceIncrement = deltaTimeMs / (POLAR_BIN_CONFIDENCE_GAIN_PER_SECOND * 1000.0f);  // Increment confidence based on time between samples and configured gain
+            polarBins[blendedBinIndex].confidence += confidenceIncrement;  // Gradually increase confidence as more samples are collected
         }
     }
 }
@@ -2177,7 +2188,7 @@ static void refreshGlidePolar(void) {
     const int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedFloat);  // Round to nearest integer for binning
     const int32_t currentSinkRate = (int32_t)lroundf(currentSinkRateFloat);  // Round to nearest integer for binning
 
-    updateGlidePolarData(currentAirSpeed, currentSinkRate);
+    updateGlidePolarData(currentAirSpeed, currentSinkRate, currentTime - lastUpdateTime);
     
     updateMinimumSinkRateAndSpeed();
     updateBestGlideRatioAndSpeed();
