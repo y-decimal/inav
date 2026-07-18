@@ -193,7 +193,11 @@ typedef struct statistic_s {
 
 #define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 #define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
-#define POLAR_BIN_COUNT 20
+#define POLAR_BIN_COUNT 30
+#define POLAR_BIN_RANGE 2.0f // Range of how far from reference airspeed the polar bin covers as a fraction of reference airspeed, e.g. 2.0 = 200% of reference airspeed, so a reference airspeed of 100cm/s would have a polar bin range of 0cm/s to 200cm/s
+#define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
+#define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
+#define POLAR_BIN_BLENDING_WIDTH 100 // Width of the blending region between polar bins in cm/s, used to blend sink rate values between adjacent polar bins to reduce noise and improve accuracy
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -202,7 +206,7 @@ typedef struct glidePositionSample_s {
 
 typedef struct polarBin_s {
     int32_t sinkRateAverage;  // Average sink rate for this polar bin
-    uint8_t sampleCount;
+    float confidence;         // Confidence level for this polar bin
 } polarBin_t;
 
 // Fixed-size glide buffer
@@ -219,9 +223,8 @@ static uint8_t glideRatioSampleTimeFrame = 5;
 
 static bool polarRequired = false; // Whether any polar element is enabled, used to determine whether polar calculation needs to be performed
 static int32_t polarBinWidth = 0; // Width of each polar bin in cm/s, calculated based on measured min/max airspeed and number of polar bins
-static float sinkRateSmoothingAlpha = 0.1f; // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
-static int32_t minGlideAirSpeed = 0; // Minimum airspeed in cm/s measured during glide, used to determine polar bin width
-static int32_t maxGlideAirSpeed = 0; // Maximum airspeed in cm/s measured during glide, used to determine polar bin width
+static int32_t minGlideAirSpeed = 0; // Minimum airspeed in cm/s, calculated based on reference airspeed
+static int32_t maxGlideAirSpeed = 0; // Maximum airspeed in cm/s, calculated based on reference airspeed
 static int32_t minSinkRate = 0; // Minimum sink rate in cm/s
 static int32_t minSinkSpeed = 0; // Minimum sink speed in cm/s
 static float bestGlideRatio = 0.0f;
@@ -2072,33 +2075,6 @@ static void enableGlideRatioCalculation(void) {
     }
 }
 
-// Update polar bin width based on current airspeed and glide conditions
-static void updatePolarBinWidth(int32_t currentAirSpeedInCMS) {
-
-    if (!isDataValidGlide()) {
-        return;  // Data not from valid glide conditions, skip
-    }
-
-    int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedInCMS);  // Round to nearest integer for binning
-
-    if (currentAirSpeed < minGlideAirSpeed) {
-        minGlideAirSpeed = minGlideAirSpeed*0.9f + currentAirSpeed*0.1f;  // Smooth minimum airspeed
-    } else if (currentAirSpeed > maxGlideAirSpeed) {
-        maxGlideAirSpeed = maxGlideAirSpeed*0.9f + currentAirSpeed*0.1f;  // Smooth maximum airspeed
-    }
-
-    if (maxGlideAirSpeed - minGlideAirSpeed < 3.0f) {
-        maxGlideAirSpeed = minGlideAirSpeed + 3.0f;  // Ensure a sane minimum range 
-    }
-
-    float newPolarBinWidth = (maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT;
-
-    if (fabsf(newPolarBinWidth - polarBinWidth) > 0.1f) { // Update bin width if it has changed significantly
-        polarBinWidth = newPolarBinWidth;
-    }
-    DEBUG_SET(DEBUG_GLIDE_OSD, 4, polarBinWidth);
-}
-
 // Get the polar bin index for a given airspeed
 static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
 
@@ -2122,8 +2098,8 @@ static void updateMinimumSinkRateAndSpeed(void) {
 
     uint8_t minSinkRateBinIndex;
     for (minSinkRateBinIndex = 0; minSinkRateBinIndex < POLAR_BIN_COUNT; minSinkRateBinIndex++) {
-        if (polarBins[minSinkRateBinIndex].sampleCount > 10) {
-            if (minSinkRate == 0.0f || polarBins[minSinkRateBinIndex].sinkRateAverage < minSinkRate) {
+        if (polarBins[minSinkRateBinIndex].confidence > 0.4f) {
+            if (minSinkRate > 0 || polarBins[minSinkRateBinIndex].sinkRateAverage < minSinkRate) {
                 minSinkRate = polarBins[minSinkRateBinIndex].sinkRateAverage;
                 minSinkSpeed = convertBinIndexToAirspeed(minSinkRateBinIndex);
             }
@@ -2137,8 +2113,8 @@ static void updateMinimumSinkRateAndSpeed(void) {
 static void updateBestGlideRatioAndSpeed(void) {
     uint8_t bestGlideBinIndex;
     for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
-        if (polarBins[bestGlideBinIndex].sampleCount > 10 && polarBins[bestGlideBinIndex].sinkRateAverage >= 0.0f) {
-            float glideRatio = convertBinIndexToAirspeed(bestGlideBinIndex) / polarBins[bestGlideBinIndex].sinkRateAverage;
+        if (polarBins[bestGlideBinIndex].confidence > 0.4f && polarBins[bestGlideBinIndex].sinkRateAverage > 0) {
+            float glideRatio = (float)convertBinIndexToAirspeed(bestGlideBinIndex) / (float)polarBins[bestGlideBinIndex].sinkRateAverage;
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
                 bestGlideSpeed = convertBinIndexToAirspeed(bestGlideBinIndex);
@@ -2151,7 +2127,41 @@ static void updateBestGlideRatioAndSpeed(void) {
     DEBUG_SET(DEBUG_GLIDE_OSD, 3, bestGlideSpeed);
 }
 
-static void updateGlidePolarData(void) {
+static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate) {
+
+    uint8_t binIndex = getPolarBinIndexForGivenSpeed(airspeed);
+    if (binIndex >= POLAR_BIN_COUNT) {
+        return;  // Index out of range, skip
+    }
+
+    uint8_t binIndexBlendRange = POLAR_BIN_BLENDING_WIDTH / polarBinWidth;
+
+    // Update the polar data for this bin
+
+    for (int8_t blendOffset = -binIndexBlendRange; blendOffset <= binIndexBlendRange; blendOffset++) {
+        int8_t blendedBinIndex = binIndex + blendOffset;
+
+        if (blendedBinIndex < 0 || blendedBinIndex >= POLAR_BIN_COUNT || binIndexBlendRange <= 0) {
+            continue;  // Skip out-of-range bins
+        }
+
+        float blendWeightAlphaScalar = (float)ABS(blendOffset) / (float)binIndexBlendRange;
+        float scaledAlpha = 1.0f;
+        if (polarBins[blendedBinIndex].confidence > 0.0f) {
+            scaledAlpha = SINK_RATE_SMOOTHING_ALPHA * (1 / polarBins[blendedBinIndex].confidence);  // Increase smoothing alpha for low confidence bins to make them adapt faster
+        }
+        if (scaledAlpha <  SINK_RATE_SMOOTHING_ALPHA) {
+         scaledAlpha = SINK_RATE_SMOOTHING_ALPHA;  // Don't go below configured smoothing alpha
+        }
+        scaledAlpha *= (1.0f - blendWeightAlphaScalar);  // Reduce alpha for bins further away from the current airspeed bin
+        polarBins[blendedBinIndex].sinkRateAverage = polarBins[blendedBinIndex].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
+        if (polarBins[blendedBinIndex].confidence < 1.0f) {
+            polarBins[blendedBinIndex].confidence += 0.05f;  // Gradually increase confidence as more samples are collected
+        }
+    }
+}
+
+static void refreshGlidePolar(void) {
 
     static timeMs_t lastUpdateTime = 0;
     const timeMs_t currentTime = millis();
@@ -2167,22 +2177,7 @@ static void updateGlidePolarData(void) {
     const int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedFloat);  // Round to nearest integer for binning
     const int32_t currentSinkRate = (int32_t)lroundf(currentSinkRateFloat);  // Round to nearest integer for binning
 
-    updatePolarBinWidth(currentAirSpeed);  // Update bin width based on current airspeed
-    uint8_t binIndex = getPolarBinIndexForGivenSpeed(currentAirSpeed);
-    if (binIndex >= POLAR_BIN_COUNT) {
-        return;  // Index out of range, skip
-    }
-
-    // Update the polar data for this bin
-    float sampleCount = (float)polarBins[binIndex].sampleCount;  // Adjust alpha based on sample count to avoid over-smoothing early on
-    float scaledAlpha = 1.0f - sampleCount / 10.0f;  // Start with alpha = 1.0 for first sample, then decrease to 0.1 as sample count approaches 10
-    if (scaledAlpha <  sinkRateSmoothingAlpha) {
-        scaledAlpha = sinkRateSmoothingAlpha;  // Don't go below configured smoothing alpha
-    }
-    polarBins[binIndex].sinkRateAverage = polarBins[binIndex].sinkRateAverage * (1-scaledAlpha) + currentSinkRate * scaledAlpha;  // Smooth the sink rate
-    if (polarBins[binIndex].sampleCount < UINT8_MAX) {
-        polarBins[binIndex].sampleCount++;  // Increment sample count, but don't overflow
-    }
+    updateGlidePolarData(currentAirSpeed, currentSinkRate);
     
     updateMinimumSinkRateAndSpeed();
     updateBestGlideRatioAndSpeed();
@@ -2192,7 +2187,11 @@ static void updateGlidePolarData(void) {
 static void enableGlidePolarDataCollection(void) {
     if (!polarRequired) {
         polarRequired = true;
-        updateGlidePolarData();  // Start data collection immediately when element is enabled
+        float fixedWingReferenceAirspeed = pidProfile()->fixedWingReferenceAirspeed;
+        minGlideAirSpeed = fixedWingReferenceAirspeed * POLAR_BIN_RANGE * POLAR_BIN_RANGE_ASYMMETRY;
+        maxGlideAirSpeed = fixedWingReferenceAirspeed * POLAR_BIN_RANGE * (1.0f - POLAR_BIN_RANGE_ASYMMETRY);
+        polarBinWidth = (maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT;
+        refreshGlidePolar();  // Start data collection immediately when element is enabled
     }
 }
 
@@ -2447,7 +2446,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_RATE:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkRate > 0.0f && minSinkRate < 1000.0f) {
+            if (minSinkRate > 0 && minSinkRate < 1000) {
                 osdFormatVerticalSpeedStr(buff, (int32_t)lrintf(-minSinkRate));
             } else {
                 buff[0] = buff[1] = buff[2] = '-';
@@ -2460,9 +2459,9 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkSpeed > 0.0f && minSinkSpeed < 5000.0f) {
+            if (minSinkSpeed > 0 && minSinkSpeed < 5000) {
                 int32_t minSinkSpeedConverted = osdConvertVelocityToUnit(minSinkSpeed);
-                osdFormatCentiNumber(buff, minSinkSpeedConverted, 0, 2, 0, 3, false);
+                osdFormatCentiNumber(buff, minSinkSpeedConverted * 100, 0, 2, 0, 3, false);
                 buff[3] = osdVelocityUnitSymbol();
                 buff[4] = '\0';
             } else {
@@ -2489,9 +2488,9 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 5000.0f) {
+            if (bestGlideSpeed > 0 && bestGlideSpeed < 5000) {
                 int32_t bestGlideSpeedConverted = osdConvertVelocityToUnit(bestGlideSpeed);
-                osdFormatCentiNumber(buff, bestGlideSpeedConverted, 0, 2, 0, 3, false);
+                osdFormatCentiNumber(buff, bestGlideSpeedConverted * 100, 0, 2, 0, 3, false);
                 buff[3] = osdVelocityUnitSymbol();
                 buff[4] = '\0';
             } else {
@@ -6290,7 +6289,7 @@ static void osdRefresh(timeUs_t currentTimeUs)
     }
 
     if (polarRequired) {
-        updateGlidePolarData();
+        refreshGlidePolar();
     }
 
 #ifdef USE_CMS
