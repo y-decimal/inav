@@ -2179,10 +2179,7 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
 
         float scaledAlpha = 1.0f;
         if (polarBins[index].confidence > 0.0f) {
-            scaledAlpha = MAX(SINK_RATE_SMOOTHING_ALPHA * (1.0f / polarBins[index].confidence), 1.0f);  // Increase smoothing alpha for low confidence bins to make them adapt faster
-        }
-        if (scaledAlpha <  SINK_RATE_SMOOTHING_ALPHA) {
-            scaledAlpha = SINK_RATE_SMOOTHING_ALPHA;  // Don't go below configured smoothing alpha
+            scaledAlpha = constrainf(SINK_RATE_SMOOTHING_ALPHA * (1.0f / polarBins[index].confidence), SINK_RATE_SMOOTHING_ALPHA, 1.0f);  // Increase smoothing alpha for low confidence bins to make them adapt faster
         }
  
         float blendingAlphaScalar = constrainf( 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) ), 0.0f, 1.0f);
