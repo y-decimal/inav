@@ -2097,7 +2097,7 @@ static void enableGlideRatioCalculation(void) {
 static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
 
     if (polarBinWidth <= 0) {
-        return 0;  // Avoid division by zero (returns first bin instead of sentinel value to avoid accidental out of bounds buffer access)
+        return UINT8_MAX;  // Avoid division by zero (returns sentinel value, anyone using this function must perform boundary check)
     }
 
     uint8_t polarBinIndex = (uint8_t)((airspeedInCMS - minGlideAirSpeed) / polarBinWidth);
@@ -2115,10 +2115,14 @@ static int32_t convertBinIndexToAirspeed(uint8_t binIndex) {
 static void updateMinimumSinkRateAndSpeed(void) {
 
     uint8_t minSinkRateBinIndex;
+
     for (minSinkRateBinIndex = 0; minSinkRateBinIndex < POLAR_BIN_COUNT; minSinkRateBinIndex++) {
-        if (polarBins[minSinkRateBinIndex].confidence > 0.4f) {
-            if (minSinkRate > 0 || polarBins[minSinkRateBinIndex].sinkRateAverage < minSinkRate) {
-                minSinkRate = polarBins[minSinkRateBinIndex].sinkRateAverage;
+
+        int32_t currentSinkRate = polarBins[minSinkRateBinIndex].sinkRateAverage;
+
+        if (polarBins[minSinkRateBinIndex].confidence > 0.5f && currentSinkRate > 0) {
+            if (currentSinkRate < minSinkRate) {
+                minSinkRate = currentSinkRate;
                 minSinkSpeed = convertBinIndexToAirspeed(minSinkRateBinIndex);
             }
         }
@@ -2129,10 +2133,17 @@ static void updateMinimumSinkRateAndSpeed(void) {
 }
 
 static void updateBestGlideRatioAndSpeed(void) {
+
     uint8_t bestGlideBinIndex;
+
     for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
-        if (polarBins[bestGlideBinIndex].confidence > 0.4f && polarBins[bestGlideBinIndex].sinkRateAverage > 0) {
-            float glideRatio = (float)convertBinIndexToAirspeed(bestGlideBinIndex) / (float)polarBins[bestGlideBinIndex].sinkRateAverage;
+
+        int32_t currentSinkRate = polarBins[bestGlideBinIndex].sinkRateAverage;
+
+        if (polarBins[bestGlideBinIndex].confidence > 0.5f && currentSinkRate > 0) {
+
+            float glideRatio = (float)convertBinIndexToAirspeed(bestGlideBinIndex) / (float)currentSinkRate;
+            
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
                 bestGlideSpeed = convertBinIndexToAirspeed(bestGlideBinIndex);
