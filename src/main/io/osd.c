@@ -198,9 +198,8 @@ typedef struct statistic_s {
 #define POLAR_RLS_FORGETTING_FACTOR 0.995f  // Forgetting factor
 #define POLAR_RLS_DENOM_EPS 1e-6f           // Small regularizer to avoid division by zero
 #define INITIAL_COVARIANCE_DIAGONAL 1e4f    // Initial covariance diagonal magnitude (large -> fast initial learning)
-// Clamp bounds for covariance diagonal to avoid numerical blowup
-#define COV_DIAG_MIN 1e-6f
-#define COV_DIAG_MAX 1e12f
+#define COV_DIAG_MIN 1e-6f                  // Clamp bounds for covariance diagonal to avoid numerical blowup
+#define COV_DIAG_MAX 1e12f                  // Clamp bounds for covariance diagonal to avoid numerical blowup
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
