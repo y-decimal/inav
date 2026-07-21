@@ -2205,8 +2205,8 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
     const uint8_t blendingIndexFloor = MAX(binIndex - blendingWidthInBins, 0);
     const uint8_t blendingIndexCeiling = MIN(binIndex + blendingWidthInBins, POLAR_BIN_COUNT - 1);
 
-    const float confidenceDecay = (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_NO_CONFIDENCE * 1000.0f));         // Decay confidence based on time between samples and configured decay
-    const float confidenceIncrement = (float)deltaTimeMs / (float)(POLAR_BIN_TIME_TO_FULL_CONFIDENCE * 1000.0f);     // Increment confidence based on time between samples and configured gain
+    const float confidenceDecay = MAX( (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_NO_CONFIDENCE) * 1000.0f), 0.01f);         // Decay confidence based on time between samples and configured decay
+    const float confidenceIncrement = MAX( (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_FULL_CONFIDENCE) * 1000.0f), 0.05f);     // Increment confidence based on time between samples and configured gain
 
     for (uint8_t index = blendingIndexFloor; index < blendingIndexCeiling; index++) {
 
