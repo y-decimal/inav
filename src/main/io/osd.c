@@ -1963,7 +1963,7 @@ static bool isDataValidGlide(void) {
         ABS(attitude.values.roll) > 200 ||
         ABS(attitude.values.pitch) > 300 ||
         fabsf(horizontalAcceleration) > 300 ||  // More than 300cm/s² (3 m/s²) horizontal acceleration
-        fabsf(verticalAcceleration) > 50)      // More than 50cm/s² vertical acceleration
+        fabsf(verticalAcceleration) > 100)      // More than 100cm/s² vertical acceleration
     {     
         lastInvalidTime = now;
         return false;
