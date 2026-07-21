@@ -2595,7 +2595,7 @@ static bool osdDrawSingleElement(uint8_t item)
                 buff[0] = 'S';
                 osdFormatVerticalSpeedStr(buff + 1, minSinkRate);
             } else {
-                buff[0] = buff[1] = buff[2] = buff[3] = '-';
+                buff[1] = buff[2] = buff[3] = '-';
                 buff[4] = osdVerticalSpeedUnitSymbol();
             }
 
