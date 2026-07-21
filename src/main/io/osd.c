@@ -193,14 +193,13 @@ typedef struct statistic_s {
 
 #define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 #define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
-#define POLAR_BIN_COUNT 60
-#define POLAR_BIN_RANGE 1.75f // Range of how far from reference airspeed the polar bin covers as a fraction of reference airspeed, e.g. 2.0 = 200% of reference airspeed, so a reference airspeed of 100cm/s would have a polar bin range of 0cm/s to 200cm/s
-#define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
-#define MINIMUM_POLAR_BIN_WIDTH 85    // Minimum bin width to ensure the ability to fly within a bin 
-#define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
-#define POLAR_BIN_TIME_TO_FULL_CONFIDENCE 30UL // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
-#define POLAR_BIN_TIME_TO_NO_CONFIDENCE 1200UL // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
 
+#define POLAR_RLS_FORGETTING_FACTOR 0.995f  // Forgetting factor
+#define POLAR_RLS_DENOM_EPS 1e-6f           // Small regularizer to avoid division by zero
+#define INITIAL_COVARIANCE_DIAGONAL 1e4f    // Initial covariance diagonal magnitude (large -> fast initial learning)
+// Clamp bounds for covariance diagonal to avoid numerical blowup
+#define COV_DIAG_MIN 1e-6f
+#define COV_DIAG_MAX 1e12f
 
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
@@ -208,20 +207,13 @@ typedef struct glidePositionSample_s {
 } glidePositionSample_t;
 
 typedef struct polarBin_s {
-    int32_t sinkRateAverage;  // Average sink rate for this polar bin
+    float sinkRateAverage;  // Average sink rate for this polar bin
     float confidence;         // Confidence level for this polar bin
 } polarBin_t;
-
-typedef struct speedRange_s {
-    int32_t speedRangeFloor;
-    int32_t speedRangeCeiling;
-} speedRange_t;
 
 // Fixed-size glide buffer
 static glidePositionSample_t glideBuffer[GLIDE_RATIO_SAMPLE_BUFFER_SIZE];
 
-// Fixes-size polar bin buffer
-static polarBin_t polarBins[POLAR_BIN_COUNT];
 
 // Calculated glide ratio (distance per unit altitude descent)
 // Available for use by multiple OSD elements
@@ -230,13 +222,17 @@ static bool glideRatioRequired = false; // Whether any glide element is enabled,
 static uint8_t glideRatioSampleTimeFrame = 5;
 
 static bool polarRequired = false; // Whether any polar element is enabled, used to determine whether polar calculation needs to be performed
-static int32_t polarBinWidth = 0; // Width of each polar bin in cm/s, calculated based on min/max airspeed and number of polar bins
-static int32_t minGlideAirSpeed = 0; // Minimum airspeed in cm/s, calculated based on reference airspeed
-static int32_t maxGlideAirSpeed = 0; // Maximum airspeed in cm/s, calculated based on reference airspeed
-static int32_t minSinkRate = INT32_MAX; // Minimum sink rate in cm/s
-static speedRange_t minSinkSpeed; // Minimum sink speed in cm/s
+
+fpVector3_t polarCoefficientVector;
+fpMat3_t polarCovarianceMatrix;
+
+static float minGlideAirSpeed = 0; // Minimum airspeed in cm/s, dynamically measured in flight
+static float maxGlideAirSpeed = 0; // Maximum airspeed in cm/s, dynamically measured in flight
+
+static float minSinkRate = 10000.0f; // Minimum sink rate in cm/s
+static float minSinkSpeed = 0.0f; // Minimum sink speed in cm/s
 static float bestGlideRatio = 0.0f;
-static speedRange_t bestGlideSpeed; // Best glide speed in cm/s
+static float bestGlideSpeed = 0.0f; // Best glide speed in cm/s
 
 
 static statistic_t stats;
@@ -1962,8 +1958,9 @@ static bool isDataValidGlide(void) {
         getEstimatedActualVelocity(Z) > 0 ||
         ABS(attitude.values.roll) > 200 ||
         ABS(attitude.values.pitch) > 300 ||
-        fabsf(horizontalAcceleration) > 300 ||  // More than 300cm/s² (3 m/s²) horizontal acceleration
-        fabsf(verticalAcceleration) > 100)      // More than 100cm/s² vertical acceleration
+        fabsf(horizontalAcceleration) > 500 ||  // More than 300cm/s² (3 m/s²) horizontal acceleration
+        fabsf(verticalAcceleration) > 200 ||    // More than 100cm/s² vertical acceleration
+        filteredAirspeed < 500.0f)              // Less than 5 m/s airspeed 
     {     
         lastInvalidTime = now;
         return false;
@@ -2107,138 +2104,174 @@ static void enableGlideRatioCalculation(void) {
     }
 }
 
-// Get the polar bin index for a given airspeed
-static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
+static inline float normalizeSpeedWithinRange(float speedToNormalize, float minSpeed, float maxSpeed) {
+    float speedRange = maxSpeed - minSpeed;
+    float speedCenter = minSpeed + (speedRange * 0.5f);
+    float speedScale = 1 / speedCenter;
+    return ( speedToNormalize - speedCenter ) * speedScale;
 
-    if (polarBinWidth <= 0) {
-        return UINT8_MAX;  // Avoid division by zero (returns sentinel value, anyone using this function must perform boundary check)
-    }
-
-    uint8_t polarBinIndex = (uint8_t)((airspeedInCMS - minGlideAirSpeed) / polarBinWidth);
-    polarBinIndex = constrain(polarBinIndex, 0, POLAR_BIN_COUNT - 1);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 4, polarBinIndex);
-    return polarBinIndex;
 }
 
-static int32_t convertBinIndexToAirspeedFloor(uint8_t binIndex) {
-    if (binIndex > POLAR_BIN_COUNT) {
-        return 0;
-    }
-
-    int32_t aspd = minGlideAirSpeed + (int32_t)(binIndex) * polarBinWidth;
-    return aspd;
+static inline float getActualAirspeedFromNormalizedWithinRange(float normalizedSpeed, float minSpeed, float maxSpeed) {
+    float speedRange = maxSpeed - minSpeed;
+    float speedCenter = minSpeed + (speedRange * 0.5f);
+    float speedScale = 1 / speedCenter;
+    return (normalizedSpeed / speedScale) + speedCenter;
 }
 
-static int32_t convertBinIndexToCenterAirspeed(uint8_t binIndex) {
-    if (binIndex > POLAR_BIN_COUNT) {
-        return 0;
-    }
-
-    int32_t aspd = convertBinIndexToAirspeedFloor(binIndex) + polarBinWidth / 2;
-    DEBUG_SET(DEBUG_GLIDE_OSD, 5, aspd);
-    return aspd;
+static inline float normalizeSpeedWithingGlideSpeedRange(float speedToNormalize) {
+    return normalizeSpeedWithinRange(speedToNormalize, minGlideAirSpeed, maxGlideAirSpeed);
+    // return speedToNormalize;
 }
 
-static speedRange_t convertBinIndexToSpeedRange(uint8_t binIndex) {
+static inline float getActualAirspeedFromNormalizedWithinGlideSpeedRange(float normalizedSpeed) {
+    return getActualAirspeedFromNormalizedWithinRange(normalizedSpeed, minGlideAirSpeed, maxGlideAirSpeed);
+    // return normalizedSpeed;
+}
 
-    speedRange_t range;
 
-    uint8_t lowerIndex = binIndex < 1 ? 0 : binIndex;
-    uint8_t upperIndex = binIndex >= POLAR_BIN_COUNT - 1 ? POLAR_BIN_COUNT - 1 : binIndex + 1;
+static inline fpVector3_t buildRegressorFromRawAirspeed(float airspeed) {
+    fpVector3_t output;
+    float normalizedVelocity = normalizeSpeedWithingGlideSpeedRange(airspeed);
+    output.x = 1.0f;
+    output.y = normalizedVelocity;
+    output.z = normalizedVelocity * normalizedVelocity;
+    return output;
+}
 
-    range.speedRangeFloor = convertBinIndexToAirspeedFloor(lowerIndex);
-    range.speedRangeCeiling = convertBinIndexToAirspeedFloor(upperIndex);
+// Utility: clamp covariance diagonal for stability 
+static void clampCovarianceDiagonal(void) {
+    for (int i = 0; i < 3; ++i) {
+        if (polarCovarianceMatrix.m[i][i] < COV_DIAG_MIN) polarCovarianceMatrix.m[i][i] = COV_DIAG_MIN;
+        if (polarCovarianceMatrix.m[i][i] > COV_DIAG_MAX) polarCovarianceMatrix.m[i][i] = COV_DIAG_MAX;
+    }
+}
 
-    return range;
+void initializeGlidePolar(void) {
+    polarCoefficientVector.x = 0.0f;
+    polarCoefficientVector.y = 0.0f;
+    polarCoefficientVector.z = 0.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            polarCovarianceMatrix.m[i][j] = (i == j) ? 1e4f : 0.0f;
+        }
+    }
+}
+
+void updateGlidePolarData(float currentAirspeed, float currentSinkrate) {
+    fpVector3_t x = buildRegressorFromRawAirspeed(currentAirspeed);
+
+    fpVector3_t Px;
+    vectorZero(&Px);
+    for (int i = 0; i<3; i++) {
+        Px.v[i] = polarCovarianceMatrix.m[i][0] * x.x 
+                + polarCovarianceMatrix.m[i][1] * x.y
+                + polarCovarianceMatrix.m[i][2] * x.z;
+    }
+
+    float denom = MAX(POLAR_RLS_FORGETTING_FACTOR + vectorDotProduct(&x, &Px), POLAR_RLS_DENOM_EPS);
+
+    fpVector3_t K;
+    vectorZero(&K);
+    vectorScale(&K, &Px, 1.0f / denom);
+    float yhat = vectorDotProduct(&x, &polarCoefficientVector);
+    float residual = currentSinkrate - yhat;
+
+    polarCoefficientVector.x += K.x * residual;
+    polarCoefficientVector.y += K.y * residual;
+    polarCoefficientVector.z += K.z * residual;
+
+    fpMat3_t KxT;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            KxT.m[i][j] = K.v[i] * x.v[j];
+        }
+    }
+
+    fpMat3_t temp;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            temp.m[i][j] = KxT.m[i][0] * polarCovarianceMatrix.m[0][j] 
+                          + KxT.m[i][1] * polarCovarianceMatrix.m[1][j] 
+                          + KxT.m[i][2] * polarCovarianceMatrix.m[2][j];
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            polarCovarianceMatrix.m[i][j] = (polarCovarianceMatrix.m[i][j] - temp.m[i][j]) / POLAR_RLS_FORGETTING_FACTOR;
+        }
+    }
+
+    clampCovarianceDiagonal();
+}
+
+void updateAirspeedRange(float currentAirspeed) {
+
+    minGlideAirSpeed = 1111.11f;
+    maxGlideAirSpeed = 2500.00f;
+
+    // const float smoothingAlpha = 0.1f;  // Smoothing factor for exponential moving average
+
+    // if (currentAirspeed < minGlideAirSpeed) {
+    //     minGlideAirSpeed = minGlideAirSpeed * (1 - smoothingAlpha) + currentAirspeed * smoothingAlpha;
+    // }
+    // else if (minGlideAirSpeed <= 0.0f) 
+    // {
+    //     minGlideAirSpeed = currentAirspeed;  // Initialize minGlideAirSpeed if it was zero or negative
+    // }
+    // else
+    // {
+    //     minGlideAirSpeed = minGlideAirSpeed * (1 + smoothingAlpha / 100.0f);  // Slowly increase minGlideAirSpeed if currentAirspeed is above it
+    // }
+
+    // if (currentAirspeed > maxGlideAirSpeed) {
+    //     maxGlideAirSpeed = maxGlideAirSpeed * (1 - smoothingAlpha) + currentAirspeed * smoothingAlpha;
+    // }
+    // else if (maxGlideAirSpeed <= 0.0f) 
+    // {
+    //     maxGlideAirSpeed = currentAirspeed;  // Initialize maxGlideAirSpeed if it was zero or negative
+    // }
+    // else
+    // {
+    //     maxGlideAirSpeed = maxGlideAirSpeed * (1 - smoothingAlpha / 100.0f);  // Slowly decrease maxGlideAirSpeed if currentAirspeed is below it
+    // }
+
+}
+
+float getEstimatedSinkRate(float airspeed) {
+    fpVector3_t x = buildRegressorFromRawAirspeed(airspeed);
+    return vectorDotProduct(&x, &polarCoefficientVector);
 }
 
 static void updateMinimumSinkRateAndSpeed(void) {
+    minSinkRate = 10000.0f;  // Start with a large number to find the minimum
+    minSinkSpeed = 0.0f;
 
-    uint8_t minSinkRateBinIndex;
-    
-    minSinkRate = INT32_MAX;
-
-    for (minSinkRateBinIndex = 0; minSinkRateBinIndex < POLAR_BIN_COUNT; minSinkRateBinIndex++) {
-
-        int32_t currentSinkRate = polarBins[minSinkRateBinIndex].sinkRateAverage;
-
-        if (polarBins[minSinkRateBinIndex].confidence > 0.5f && currentSinkRate > 0) {
-            if (currentSinkRate < minSinkRate) {
-                minSinkRate = currentSinkRate;
-                minSinkSpeed = convertBinIndexToSpeedRange(minSinkRateBinIndex);
-            }
+    for (float speed = minGlideAirSpeed; speed <= maxGlideAirSpeed; speed += 50.0f) {
+        float sinkRate = getEstimatedSinkRate(speed);
+        if (sinkRate < minSinkRate) {
+            minSinkRate = sinkRate;
+            minSinkSpeed = speed;
         }
     }
-
-    DEBUG_SET(DEBUG_GLIDE_OSD, 0, minSinkRate);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 1, minSinkSpeed.speedRangeFloor);
 }
 
 static void updateBestGlideRatioAndSpeed(void) {
-
-    uint8_t bestGlideBinIndex;
-
     bestGlideRatio = 0.0f;
+    bestGlideSpeed = 0.0f;
 
-    for (bestGlideBinIndex = 0; bestGlideBinIndex < POLAR_BIN_COUNT; bestGlideBinIndex++) {
-
-        int32_t currentSinkRate = polarBins[bestGlideBinIndex].sinkRateAverage;
-
-        if (polarBins[bestGlideBinIndex].confidence > 0.5f && currentSinkRate > 0) {
-
-            float glideRatio = (float)convertBinIndexToCenterAirspeed(bestGlideBinIndex) / (float)currentSinkRate;
-
+    for (float speed = minGlideAirSpeed; speed <= maxGlideAirSpeed; speed += 50.0f) {
+        float sinkRate = getEstimatedSinkRate(speed);
+        if (sinkRate > 0.0f) {  // Only consider valid sink rates
+            float glideRatio = fabs(speed / sinkRate); 
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
-                bestGlideSpeed = convertBinIndexToSpeedRange(bestGlideBinIndex);
+                bestGlideSpeed = speed;
             }
         }
     }
-
-    float scaledBestGlideRatio = bestGlideRatio * 100.0f;  // Scale for integer representation
-    DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)lrintf(scaledBestGlideRatio));
-    DEBUG_SET(DEBUG_GLIDE_OSD, 3, bestGlideSpeed.speedRangeFloor);
-}
-
-static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t deltaTimeMs) {
-
-    const uint8_t binIndex = getPolarBinIndexForGivenSpeed(airspeed);
-    if (binIndex >= POLAR_BIN_COUNT) {
-        return;  // Index out of range, skip
-    }
-
-    // Update the polar data for this bin
-
-    const float confidenceDecay = (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_NO_CONFIDENCE) * 1000.0f);         // Decay confidence based on time between samples and configured decay
-    const float confidenceIncrement = (float)deltaTimeMs / ((float)(POLAR_BIN_TIME_TO_FULL_CONFIDENCE) * 1000.0f);     // Increment confidence based on time between samples and configured gain
-
-    const bool isInitialized = polarBins[binIndex].confidence > 0.0f;
-
-    float scaledAlpha = 1.0f;
-
-    if (isInitialized) {
-         scaledAlpha = constrainf(SINK_RATE_SMOOTHING_ALPHA * (1.0f / polarBins[binIndex].confidence), SINK_RATE_SMOOTHING_ALPHA, 1.0f);
-    }
-    
-    polarBins[binIndex].sinkRateAverage = polarBins[binIndex].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
-        
-    if (polarBins[binIndex].confidence < 1.0f) {
-        polarBins[binIndex].confidence = MIN(polarBins[binIndex].confidence + (confidenceIncrement), 1.0f);  // Gradually increase confidence as more samples are collected
-    }
-
-    for (uint8_t index = 0; index < POLAR_BIN_COUNT; index++) {
-
-        if (index != binIndex) {
-            polarBins[index].confidence -= confidenceDecay;  // Decay confidence for bins outside the blending range
-            if (polarBins[index].confidence < (confidenceIncrement-confidenceDecay) ) {
-                polarBins[index].confidence = 0.0f;  // Avoid negative confidence
-                polarBins[index].sinkRateAverage = 0.0f;  // Reset sink rate for bins with no confidence
-            }
-        }
-    }
-
-    DEBUG_SET(DEBUG_GLIDE_OSD, 6, polarBins[binIndex].sinkRateAverage);
-    DEBUG_SET(DEBUG_GLIDE_OSD, 7, (int32_t)(polarBins[binIndex].confidence * 100.0f));
 }
 
 static void refreshGlidePolar(void) {
@@ -2250,14 +2283,12 @@ static void refreshGlidePolar(void) {
         return;  // Data not valid for glide conditions, skip
     }
 
-    const float currentAirSpeedFloat = getAirspeedEstimate();
-    const float currentSinkRateFloat = -getEstimatedActualVelocity(Z);  // Sink rate is positive downwards, so negate Z velocity
-
-    const int32_t currentAirSpeed = (int32_t)lroundf(currentAirSpeedFloat);  // Round to nearest integer for binning
-    const int32_t currentSinkRate = (int32_t)lroundf(currentSinkRateFloat);  // Round to nearest integer for binning
-
-    updateGlidePolarData(currentAirSpeed, currentSinkRate, currentTime - lastUpdateTime);
+    const float currentAirSpeed = getAirspeedEstimate();
+    const float currentSinkRate = -getEstimatedActualVelocity(Z);  // Sink rate is positive downwards, so negate Z velocity
     
+    updateAirspeedRange(currentAirSpeed);
+
+    updateGlidePolarData(currentAirSpeed, currentSinkRate);
     updateMinimumSinkRateAndSpeed();
     updateBestGlideRatioAndSpeed();
 
@@ -2268,9 +2299,9 @@ static void enableGlidePolarDataCollection(void) {
     if (!polarRequired) {
         polarRequired = true;
         float fixedWingReferenceAirspeed = pidProfile()->fixedWingReferenceAirspeed;
-        minGlideAirSpeed = fixedWingReferenceAirspeed * POLAR_BIN_RANGE * POLAR_BIN_RANGE_ASYMMETRY;
-        maxGlideAirSpeed = fixedWingReferenceAirspeed * POLAR_BIN_RANGE * (1.0f - POLAR_BIN_RANGE_ASYMMETRY);
-        polarBinWidth = MAX((maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT, MINIMUM_POLAR_BIN_WIDTH);
+        // minGlideAirSpeed = fixedWingReferenceAirspeed * 0.5f;
+        // maxGlideAirSpeed = fixedWingReferenceAirspeed * 2.0f;
+        initializeGlidePolar();  // Reset polar data when enabling
         refreshGlidePolar();  // Start data collection immediately when element is enabled
     }
 }
@@ -2543,10 +2574,10 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkSpeed.speedRangeFloor > 0 && minSinkSpeed.speedRangeCeiling < 5000) {
-               osdFormatCentiNumber(buff, osdConvertVelocityToUnit(minSinkSpeed.speedRangeFloor) * 100, 0, 0, 0, 2, true);
+            if (minSinkSpeed > 0 && minSinkSpeed < 5000) {
+               osdFormatCentiNumber(buff, osdConvertVelocityToUnit(minSinkSpeed) * 100, 0, 0, 0, 2, true);
                buff[2] = '-';
-               osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(minSinkSpeed.speedRangeCeiling) * 100, 0, 0, 0, 2, true);
+               osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(minSinkSpeed) * 100, 0, 0, 0, 2, true);
                buff[5] = osdVelocityUnitSymbol();
            } else {
                 buff[0] = buff[1] = buff[2] = buff[3] = buff[4] = '-';
@@ -2572,10 +2603,10 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (bestGlideSpeed.speedRangeFloor > 0 && bestGlideSpeed.speedRangeCeiling < 7500) {
-                osdFormatCentiNumber(buff, osdConvertVelocityToUnit(bestGlideSpeed.speedRangeFloor) * 100, 0, 0, 0, 2, true);
+            if (bestGlideSpeed > 0 && bestGlideSpeed < 7500) {
+                osdFormatCentiNumber(buff, osdConvertVelocityToUnit(bestGlideSpeed) * 100, 0, 0, 0, 2, true);
                 buff[2] = '-';
-                osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(bestGlideSpeed.speedRangeCeiling) * 100, 0, 0, 0, 2, true);
+                osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(bestGlideSpeed) * 100, 0, 0, 0, 2, true);
                 buff[5] = osdVelocityUnitSymbol();
             } else {
                 buff[0] = buff[1] = buff[2] = buff[3] = buff[4] = '-';
