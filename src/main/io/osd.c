@@ -2120,12 +2120,21 @@ static uint8_t getPolarBinIndexForGivenSpeed(int32_t airspeedInCMS) {
     return polarBinIndex;
 }
 
-static int32_t convertBinIndexToAirspeed(uint8_t binIndex) {
+static int32_t convertBinIndexToAirspeedFloor(uint8_t binIndex) {
     if (binIndex > POLAR_BIN_COUNT) {
         return 0;
     }
 
-    int32_t aspd = minGlideAirSpeed + (int32_t)(binIndex * polarBinWidth);
+    int32_t aspd = minGlideAirSpeed + (int32_t)(binIndex) * polarBinWidth;
+    return aspd;
+}
+
+static int32_t convertBinIndexToCenterAirspeed(uint8_t binIndex) {
+    if (binIndex > POLAR_BIN_COUNT) {
+        return 0;
+    }
+
+    int32_t aspd = convertBinIndexToAirspeedFloor + polarBinWidth / 2;
     DEBUG_SET(DEBUG_GLIDE_OSD, 5, aspd);
     return aspd;
 }
@@ -2134,11 +2143,11 @@ static speedRange_t convertBinIndexToSpeedRange(uint8_t binIndex) {
 
     speedRange_t range;
 
-    uint8_t lowerIndex = binIndex < 2 ? 0 : binIndex - 1;
+    uint8_t lowerIndex = binIndex < 1 ? 0 : binIndex;
     uint8_t upperIndex = binIndex >= POLAR_BIN_COUNT - 1 ? POLAR_BIN_COUNT - 1 : binIndex + 1;
 
-    range.speedRangeFloor = convertBinIndexToAirspeed(lowerIndex);
-    range.speedRangeCeiling = convertBinIndexToAirspeed(upperIndex);
+    range.speedRangeFloor = convertBinIndexToAirspeedFloor(lowerIndex);
+    range.speedRangeCeiling = convertBinIndexToAirspeedFloor(upperIndex);
 
     return range;
 }
@@ -2177,7 +2186,7 @@ static void updateBestGlideRatioAndSpeed(void) {
 
         if (polarBins[bestGlideBinIndex].confidence > 0.5f && currentSinkRate > 0) {
 
-            float glideRatio = (float)convertBinIndexToAirspeed(bestGlideBinIndex) / (float)currentSinkRate;
+            float glideRatio = (float)convertBinIndexToCenterAirspeed(bestGlideBinIndex) / (float)currentSinkRate;
 
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
