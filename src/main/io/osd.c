@@ -196,7 +196,7 @@ typedef struct statistic_s {
 #define POLAR_BIN_COUNT 60
 #define POLAR_BIN_RANGE 1.75f // Range of how far from reference airspeed the polar bin covers as a fraction of reference airspeed, e.g. 2.0 = 200% of reference airspeed, so a reference airspeed of 100cm/s would have a polar bin range of 0cm/s to 200cm/s
 #define POLAR_BIN_RANGE_ASYMMETRY 0.3f // Asymmetry factor for polar bin range, e.g. 0.3 = 30% of range below reference airspeed and 70% above reference airspeed. In our above example we would get a range of 40cm/s to 240cm/s for a reference airspeed of 100cm/s
-#define MINIMUM_POLAR_BIN_WIDTH 50    // Minimum bin width to ensure the ability to fly within a bin 
+#define MINIMUM_POLAR_BIN_WIDTH 111    // Minimum bin width to ensure the ability to fly within a bin 
 #define SINK_RATE_SMOOTHING_ALPHA 0.1f // Smoothing factor for sink rate averaging, 0.1 = 10% of new value, 90% of previous average
 #define POLAR_BIN_TIME_TO_FULL_CONFIDENCE 30UL // Time in seconds to reach full confidence from 0 for a polar bin, used to determine how quickly the confidence value increases as more samples are collected
 #define POLAR_BIN_TIME_TO_NO_CONFIDENCE 1200UL // Time in seconds to reach no confidence from 1 for a polar bin, used to determine how quickly the confidence value decays when no samples are collected
