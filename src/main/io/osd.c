@@ -2298,9 +2298,6 @@ static void refreshGlidePolar(void) {
 static void enableGlidePolarDataCollection(void) {
     if (!polarRequired) {
         polarRequired = true;
-        float fixedWingReferenceAirspeed = pidProfile()->fixedWingReferenceAirspeed;
-        // minGlideAirSpeed = fixedWingReferenceAirspeed * 0.5f;
-        // maxGlideAirSpeed = fixedWingReferenceAirspeed * 2.0f;
         initializeGlidePolar();  // Reset polar data when enabling
         refreshGlidePolar();  // Start data collection immediately when element is enabled
     }
