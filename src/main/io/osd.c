@@ -2214,12 +2214,15 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
         if (polarBins[index].confidence > 0.0f) {
             scaledAlpha = constrainf(SINK_RATE_SMOOTHING_ALPHA * (1.0f / polarBins[index].confidence), SINK_RATE_SMOOTHING_ALPHA, 1.0f);  // Increase smoothing alpha for low confidence bins to make them adapt faster
         }
-        float blendingAlphaScalar = 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) );
-        blendingAlphaScalar *= POLAR_BIN_BLENDING_FACTOR;
-        blendingAlphaScalar = constrainf(blendingAlphaScalar, 0.0f, 1.0f);
+        if (index != binIndex) {      
+            float blendingAlphaScalar = 1.0f - ( ABS(index - binIndex) / (POLAR_BIN_BLENDING_WIDTH + 1) );
+            blendingAlphaScalar *= POLAR_BIN_BLENDING_FACTOR;
+            blendingAlphaScalar = constrainf(blendingAlphaScalar, 0.0f, 1.0f);
+            scaledAlpha *= blendingAlphaScalar;  // Reduce alpha for bins further away from the current airspeed bin
+        }
 
-        scaledAlpha *= blendingAlphaScalar;  // Reduce alpha for bins further away from the current airspeed bin
         polarBins[index].sinkRateAverage = polarBins[index].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
+        
         if (polarBins[index].confidence < 1.0f) {
             polarBins[index].confidence = MIN(polarBins[index].confidence + confidenceIncrement, 1.0f);  // Gradually increase confidence as more samples are collected
         }
