@@ -2540,15 +2540,12 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             if (minSinkSpeed > 0 && minSinkSpeed < 5000) {
-               osdFormatCentiNumber(buff, osdConvertVelocityToUnit(minSinkSpeed) * 100, 0, 0, 0, 2, true);
-               buff[2] = '-';
-               osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(minSinkSpeed) * 100, 0, 0, 0, 2, true);
-               buff[5] = osdVelocityUnitSymbol();
+               osdFormatVelocityStr(buff, (int32_t)minSinkSpeed, OSD_SPEED_TYPE_AIR, false);
            } else {
-                buff[0] = buff[1] = buff[2] = buff[3] = buff[4] = '-';
-                buff[5] = osdVelocityUnitSymbol();
+                buff[0] = buff[1] = buff[2] = buff[3] = '-';
+                buff[4] = osdVelocityUnitSymbol();
             }
-            buff[6] = '\0';
+            buff[5] = '\0';
             break;
         }
 
@@ -2569,15 +2566,12 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             if (bestGlideSpeed > 0 && bestGlideSpeed < 7500) {
-                osdFormatCentiNumber(buff, osdConvertVelocityToUnit(bestGlideSpeed) * 100, 0, 0, 0, 2, true);
-                buff[2] = '-';
-                osdFormatCentiNumber(buff+3, osdConvertVelocityToUnit(bestGlideSpeed) * 100, 0, 0, 0, 2, true);
-                buff[5] = osdVelocityUnitSymbol();
+                osdFormatVelocityStr(buff, (int32_t)bestGlideSpeed, OSD_SPEED_TYPE_AIR, false);
             } else {
-                buff[0] = buff[1] = buff[2] = buff[3] = buff[4] = '-';
-                buff[5] = osdVelocityUnitSymbol();
+                buff[0] = buff[1] = buff[2] = buff[3] = '-';
+                buff[4] = osdVelocityUnitSymbol();
             }
-            buff[6] = '\0';
+            buff[5] = '\0';
             break;
         }
 
