@@ -2224,7 +2224,7 @@ static void updateGlidePolarData(int32_t airspeed, int32_t sinkRate, timeMs_t de
         polarBins[index].sinkRateAverage = polarBins[index].sinkRateAverage * (1-scaledAlpha) + sinkRate * scaledAlpha;  // Smooth the sink rate
         
         if (polarBins[index].confidence < 1.0f) {
-            polarBins[index].confidence = MIN(polarBins[index].confidence + confidenceIncrement, 1.0f);  // Gradually increase confidence as more samples are collected
+            polarBins[index].confidence = MIN(polarBins[index].confidence + (confidenceIncrement * POLAR_BIN_BLENDING_FACTOR), 1.0f);  // Gradually increase confidence as more samples are collected
         }
     }
 
