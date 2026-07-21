@@ -2525,13 +2525,14 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             if (minSinkRate > 0 && minSinkRate < 1000) {
-                osdFormatVerticalSpeedStr(buff, minSinkRate);
+                buff[0] = 'S';
+                osdFormatVerticalSpeedStr(buff + 1, minSinkRate);
             } else {
-                buff[0] = buff[1] = buff[2] = '-';
-                buff[3] = osdVerticalSpeedUnitSymbol();
+                buff[0] = buff[1] = buff[2] = buff[3] = '-';
+                buff[4] = osdVerticalSpeedUnitSymbol();
             }
 
-            buff[4] = '\0';
+            buff[5] = '\0';
             break;
         } 
 
@@ -2553,11 +2554,12 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
             if (bestGlideRatio > 0.0f && bestGlideRatio < 100.0f) {
-                osdFormatCentiNumber(buff + 1, (int32_t)(bestGlideRatio * 100.0f), 0, 2, 0, 3, false);
+                buff[1] = ' ';
+                osdFormatCentiNumber(buff + 2, (int32_t)(bestGlideRatio * 100.0f), 0, 2, 0, 3, false);
             } else {
-                buff[1] = buff[2] = buff[3] = '-';
+                buff[2] = buff[3] = buff[4] = '-';
             }
-            buff[4] = '\0';
+            buff[5] = '\0';
             break;
         }
     
