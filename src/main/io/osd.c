@@ -2264,7 +2264,7 @@ static void updateBestGlideRatioAndSpeed(void) {
 
     for (float speed = minGlideAirSpeed; speed <= maxGlideAirSpeed; speed += 50.0f) {
         float sinkRate = getEstimatedSinkRate(speed);
-        if (sinkRate > 0.0f) {  // Only consider valid sink rates
+        if (sinkRate > 0.1f) {  // Only consider valid sink rates
             float glideRatio = fabs(speed / sinkRate); 
             if (glideRatio > bestGlideRatio) {
                 bestGlideRatio = glideRatio;
