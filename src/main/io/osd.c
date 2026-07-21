@@ -194,6 +194,7 @@ typedef struct statistic_s {
 #define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 #define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
 
+#define POLAR_UPDATE_INTERVAL_MS 2000       // Update polar data every 2 seconds
 #define POLAR_RLS_FORGETTING_FACTOR 0.995f  // Forgetting factor
 #define POLAR_RLS_DENOM_EPS 1e-6f           // Small regularizer to avoid division by zero
 #define INITIAL_COVARIANCE_DIAGONAL 1e4f    // Initial covariance diagonal magnitude (large -> fast initial learning)
@@ -2246,7 +2247,7 @@ static void refreshGlidePolar(void) {
     static timeMs_t lastUpdateTime = 0;
     const timeMs_t currentTime = millis();
 
-    if (!isDataValidGlide() || (currentTime - lastUpdateTime < 1000)) {
+    if (!isDataValidGlide() || (currentTime - lastUpdateTime < POLAR_UPDATE_INTERVAL_MS)) {
         return;  // Data not valid for glide conditions, skip
     }
 
