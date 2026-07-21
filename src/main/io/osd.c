@@ -2261,7 +2261,7 @@ static void enableGlidePolarDataCollection(void) {
         float fixedWingReferenceAirspeed = pidProfile()->fixedWingReferenceAirspeed;
         minGlideAirSpeed = fixedWingReferenceAirspeed * POLAR_BIN_RANGE * POLAR_BIN_RANGE_ASYMMETRY;
         maxGlideAirSpeed = fixedWingReferenceAirspeed * POLAR_BIN_RANGE * (1.0f - POLAR_BIN_RANGE_ASYMMETRY);
-        polarBinWidth = (maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT;
+        polarBinWidth = MAX((maxGlideAirSpeed - minGlideAirSpeed) / POLAR_BIN_COUNT, MINIMUM_POLAR_BIN_WIDTH);
         refreshGlidePolar();  // Start data collection immediately when element is enabled
     }
 }
