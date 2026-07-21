@@ -2134,7 +2134,7 @@ static int32_t convertBinIndexToCenterAirspeed(uint8_t binIndex) {
         return 0;
     }
 
-    int32_t aspd = convertBinIndexToAirspeedFloor + polarBinWidth / 2;
+    int32_t aspd = convertBinIndexToAirspeedFloor(binIndex) + polarBinWidth / 2;
     DEBUG_SET(DEBUG_GLIDE_OSD, 5, aspd);
     return aspd;
 }
