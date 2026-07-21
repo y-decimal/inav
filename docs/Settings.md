@@ -4872,6 +4872,36 @@ Value under which the OSD axis g force indicators will blink (g)
 
 ---
 
+### osd_glide_max_speed
+
+Maximum speed (in cm/s) your glider can fly during normal glide. Set to slightly below the maximum reasonable speed of your glider.
+
+| Default | Min | Max |
+| --- | --- | --- |
+| 1000 | 500 | 6000 |
+
+---
+
+### osd_glide_min_speed
+
+Minimum speed (in cm/s) your glider can fly. Set to slightly above the stall speed of your glider.
+
+| Default | Min | Max |
+| --- | --- | --- |
+| 500 | 100 | 3000 |
+
+---
+
+### osd_glide_sample_time_frame
+
+Over how long of a time window the glide ratio is calculated. The longer the time frame, the more stable the glide ratio will be, but it will also be less responsive to changes in flight conditions.
+
+| Default | Min | Max |
+| --- | --- | --- |
+| 10 | 5 | 60 |
+
+---
+
 ### osd_highlight_djis_missing_font_symbols
 
 Show question marks where there is no symbol in the DJI font to represent the INAV OSD element's symbol. When off, blank spaces will be used. Only relevent for DJICOMPAT modes.

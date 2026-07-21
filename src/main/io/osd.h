@@ -547,6 +547,8 @@ typedef struct osdConfig_s {
     bool geozoneDistanceType;                            // Shows a countdown timer or distance to fence/action
 #endif
     uint8_t  glide_sample_time_frame;                   // Glide slope sampling time frame in seconds (default 10)
+    uint16_t glide_min_speed;                           // Minimum speed the glider will glide at in cm/s
+    uint16_t glide_max_speed;                           // Maximum speed the glider will glide at in cm/s
 } osdConfig_t;
 
 PG_DECLARE(osdConfig_t, osdConfig);

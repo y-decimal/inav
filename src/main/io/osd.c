@@ -2207,39 +2207,6 @@ void updateGlidePolarData(float currentAirspeed, float currentSinkrate) {
     clampCovarianceDiagonal();
 }
 
-void updateAirspeedRange(float currentAirspeed) {
-
-    minGlideAirSpeed = 1111.11f;
-    maxGlideAirSpeed = 2500.00f;
-
-    // const float smoothingAlpha = 0.1f;  // Smoothing factor for exponential moving average
-
-    // if (currentAirspeed < minGlideAirSpeed) {
-    //     minGlideAirSpeed = minGlideAirSpeed * (1 - smoothingAlpha) + currentAirspeed * smoothingAlpha;
-    // }
-    // else if (minGlideAirSpeed <= 0.0f) 
-    // {
-    //     minGlideAirSpeed = currentAirspeed;  // Initialize minGlideAirSpeed if it was zero or negative
-    // }
-    // else
-    // {
-    //     minGlideAirSpeed = minGlideAirSpeed * (1 + smoothingAlpha / 100.0f);  // Slowly increase minGlideAirSpeed if currentAirspeed is above it
-    // }
-
-    // if (currentAirspeed > maxGlideAirSpeed) {
-    //     maxGlideAirSpeed = maxGlideAirSpeed * (1 - smoothingAlpha) + currentAirspeed * smoothingAlpha;
-    // }
-    // else if (maxGlideAirSpeed <= 0.0f) 
-    // {
-    //     maxGlideAirSpeed = currentAirspeed;  // Initialize maxGlideAirSpeed if it was zero or negative
-    // }
-    // else
-    // {
-    //     maxGlideAirSpeed = maxGlideAirSpeed * (1 - smoothingAlpha / 100.0f);  // Slowly decrease maxGlideAirSpeed if currentAirspeed is below it
-    // }
-
-}
-
 float getEstimatedSinkRate(float airspeed) {
     fpVector3_t x = buildRegressorFromRawAirspeed(airspeed);
     return vectorDotProduct(&x, &polarCoefficientVector);
@@ -2285,8 +2252,6 @@ static void refreshGlidePolar(void) {
 
     const float currentAirSpeed = getAirspeedEstimate();
     const float currentSinkRate = -getEstimatedActualVelocity(Z);  // Sink rate is positive downwards, so negate Z velocity
-    
-    updateAirspeedRange(currentAirSpeed);
 
     updateGlidePolarData(currentAirSpeed, currentSinkRate);
     updateMinimumSinkRateAndSpeed();
@@ -2298,6 +2263,8 @@ static void refreshGlidePolar(void) {
 static void enableGlidePolarDataCollection(void) {
     if (!polarRequired) {
         polarRequired = true;
+        minGlideAirSpeed = osdConfig()->glide_min_speed;
+        maxGlideAirSpeed = osdConfig()->glide_max_speed;
         initializeGlidePolar();  // Reset polar data when enabling
         refreshGlidePolar();  // Start data collection immediately when element is enabled
     }
