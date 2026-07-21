@@ -2106,17 +2106,17 @@ static void enableGlideRatioCalculation(void) {
 
 static inline float normalizeSpeedWithinRange(float speedToNormalize, float minSpeed, float maxSpeed) {
     float speedRange = maxSpeed - minSpeed;
-    float speedCenter = minSpeed + (speedRange * 0.5f);
-    float speedScale = 1 / speedCenter;
-    return ( speedToNormalize - speedCenter ) * speedScale;
-
+    if (speedRange <= 0.0f) return 0.0f;
+    float halfRange = speedRange * 0.5f;
+    float center = minSpeed + halfRange;
+    return (speedToNormalize - center) / halfRange;
 }
 
 static inline float getActualAirspeedFromNormalizedWithinRange(float normalizedSpeed, float minSpeed, float maxSpeed) {
     float speedRange = maxSpeed - minSpeed;
-    float speedCenter = minSpeed + (speedRange * 0.5f);
-    float speedScale = 1 / speedCenter;
-    return (normalizedSpeed / speedScale) + speedCenter;
+    float halfRange = speedRange * 0.5f;
+    float center = minSpeed + halfRange;
+    return normalizedSpeed * halfRange + center;
 }
 
 static inline float normalizeSpeedWithingGlideSpeedRange(float speedToNormalize) {
