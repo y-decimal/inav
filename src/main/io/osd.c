@@ -2263,8 +2263,8 @@ static void refreshGlidePolar(void) {
 static void enableGlidePolarDataCollection(void) {
     if (!polarRequired) {
         polarRequired = true;
-        minGlideAirSpeed = osdConfig()->glide_min_speed;
-        maxGlideAirSpeed = osdConfig()->glide_max_speed;
+        minGlideAirSpeed = (float)osdConfig()->glide_min_speed;
+        maxGlideAirSpeed = (float)osdConfig()->glide_max_speed;
         initializeGlidePolar();  // Reset polar data when enabling
         refreshGlidePolar();  // Start data collection immediately when element is enabled
     }
