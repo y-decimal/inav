@@ -2134,6 +2134,54 @@ void initializeGlidePolar(void) {
     }
 }
 
+void updateGlidePolarData(float currentAirspeed, float currentSinkrate) {
+    fpVector3_t x = buildRegressorFromRawAirspeed(currentAirspeed);
+
+    fpVector3_t Px;
+    vectorZero(&Px);
+    for (int i = 0; i<3; i++) {
+        Px.v[i] = polarCovarianceMatrix.m[i][0] * x.x 
+                + polarCovarianceMatrix.m[i][1] * x.y
+                + polarCovarianceMatrix.m[i][2] * x.z;
+    }
+
+    float denom = MAX(POLAR_RLS_FORGETTING_FACTOR + vectorDotProduct(&x, &Px), POLAR_RLS_DENOM_EPS);
+
+    fpVector3_t K;
+    vectorZero(&K);
+    vectorScale(&K, &Px, 1.0f / denom);
+    float yhat = vectorDotProduct(&x, &polarCoefficientVector);
+    float residual = currentSinkrate - yhat;
+
+    polarCoefficientVector.x += K.x * residual;
+    polarCoefficientVector.y += K.y * residual;
+    polarCoefficientVector.z += K.z * residual;
+
+    fpMat3_t KxT;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            KxT.m[i][j] = K.v[i] * x.v[j];
+        }
+    }
+
+    fpMat3_t temp;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            temp.m[i][j] = KxT.m[i][0] * polarCovarianceMatrix.m[0][j] 
+                          + KxT.m[i][1] * polarCovarianceMatrix.m[1][j] 
+                          + KxT.m[i][2] * polarCovarianceMatrix.m[2][j];
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            polarCovarianceMatrix.m[i][j] = (polarCovarianceMatrix.m[i][j] - temp.m[i][j]) / POLAR_RLS_FORGETTING_FACTOR;
+        }
+    }
+
+    clampCovarianceDiagonal();
+}
+
 static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats)
 {
     stats->minExecutionTimeUs = TIMEUS_MAX;
