@@ -2182,6 +2182,51 @@ void updateGlidePolarData(float currentAirspeed, float currentSinkrate) {
     clampCovarianceDiagonal();
 }
 
+float getEstimatedSinkRate(float airspeed) {
+    fpVector3_t x = buildRegressorFromRawAirspeed(airspeed);
+    return vectorDotProduct(&x, &polarCoefficientVector);
+}
+
+static inline bool isCandidateWithinGlideRange(float speed)
+{
+    return speed >= minGlideAirSpeed && speed <= maxGlideAirSpeed;
+}
+
+static inline void considerMinimumSinkCandidate(float candidateSpeed, float *bestSpeed, float *bestSinkRate)
+{
+    if (!isCandidateWithinGlideRange(candidateSpeed)) {
+        return;
+    }
+
+    float sinkRate = getEstimatedSinkRate(candidateSpeed);
+    if (!isfinite(sinkRate)) {
+        return;
+    }
+
+    if (sinkRate < *bestSinkRate) {
+        *bestSinkRate = sinkRate;
+        *bestSpeed = candidateSpeed;
+    }
+}
+
+static inline void considerBestGlideCandidate(float candidateSpeed, float *bestSpeed, float *bestGlideRatio)
+{
+    if (!isCandidateWithinGlideRange(candidateSpeed)) {
+        return;
+    }
+
+    float sinkRate = getEstimatedSinkRate(candidateSpeed);
+    if (!isfinite(sinkRate) || sinkRate <= 0.1f) {
+        return;
+    }
+
+    float glideRatio = candidateSpeed / sinkRate;
+    if (glideRatio > *bestGlideRatio) {
+        *bestGlideRatio = glideRatio;
+        *bestSpeed = candidateSpeed;
+    }
+}
+
 static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats)
 {
     stats->minExecutionTimeUs = TIMEUS_MAX;
@@ -2208,6 +2253,59 @@ static void recordGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t 
     }
     if (executionTimeUs > stats->maxExecutionTimeUs) {
         stats->maxExecutionTimeUs = executionTimeUs;
+    }
+}
+
+static void updateMinimumSinkRateAndSpeed(void) {
+
+    minSinkRate = FLT_MAX;
+    minSinkSpeed = minGlideAirSpeed;
+
+    considerMinimumSinkCandidate(minGlideAirSpeed, &minSinkSpeed, &minSinkRate);
+    considerMinimumSinkCandidate(maxGlideAirSpeed, &minSinkSpeed, &minSinkRate);
+
+    const float curvature = polarCoefficientVector.z;
+    if (fabsf(curvature) > POLAR_RLS_DENOM_EPS) {
+        const float normalizedVertex = -polarCoefficientVector.y / (2.0f * curvature);
+        const float vertexSpeed = clampGlideSpeed(getActualAirspeedFromNormalizedWithinGlideSpeedRange(normalizedVertex));
+        considerMinimumSinkCandidate(vertexSpeed, &minSinkSpeed, &minSinkRate);
+    }
+
+    if (!isfinite(minSinkRate) || minSinkRate == FLT_MAX) {
+        minSinkRate = getEstimatedSinkRate(minGlideAirSpeed);
+        minSinkSpeed = minGlideAirSpeed;
+    }
+}
+
+
+static void updateBestGlideRatioAndSpeed(void) {
+
+    bestGlideRatio = 0.0f;
+    bestGlideSpeed = 0.0f;
+
+    considerBestGlideCandidate(minGlideAirSpeed, &bestGlideSpeed, &bestGlideRatio);
+    considerBestGlideCandidate(maxGlideAirSpeed, &bestGlideSpeed, &bestGlideRatio);
+
+    const float halfRange = (maxGlideAirSpeed - minGlideAirSpeed) * 0.5f;
+    if (halfRange > POLAR_RLS_DENOM_EPS) {
+        const float center = minGlideAirSpeed + halfRange;
+        const float a = halfRange * polarCoefficientVector.z;
+        const float b = 2.0f * center * polarCoefficientVector.z;
+        const float c = center * polarCoefficientVector.y - halfRange * polarCoefficientVector.x;
+
+        if (fabsf(a) > POLAR_RLS_DENOM_EPS) {
+            const float discriminant = sq(b) - 4.0f * a * c;
+            if (discriminant >= 0.0f) {
+                const float sqrtDiscriminant = sqrtf(discriminant);
+                const float inverseDenom = 0.5f / a;
+
+                const float firstRoot = (-b - sqrtDiscriminant) * inverseDenom;
+                const float secondRoot = (-b + sqrtDiscriminant) * inverseDenom;
+
+                considerBestGlideCandidate(clampGlideSpeed(getActualAirspeedFromNormalizedWithinGlideSpeedRange(firstRoot)), &bestGlideSpeed, &bestGlideRatio);
+                considerBestGlideCandidate(clampGlideSpeed(getActualAirspeedFromNormalizedWithinGlideSpeedRange(secondRoot)), &bestGlideSpeed, &bestGlideRatio);
+            }
+        }
     }
 }
 
