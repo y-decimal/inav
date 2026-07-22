@@ -1944,9 +1944,12 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
 
 static bool isDataValidForGlideRatio(void) {
     static timeMs_t lastInvalidTime = 0;
+    static timeMs_t now = 0;
 
     static float lastAirspeed = 0;
     static float filteredAirspeed = 0;
+
+    now = millis();
 
     filteredAirspeed = lastAirspeed * 0.7f + getAirspeedEstimate() * 0.3f;
     lastAirspeed = filteredAirspeed;
