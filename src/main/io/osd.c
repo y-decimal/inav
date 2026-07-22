@@ -209,6 +209,18 @@ static float currentGlideRatio = 0.0f;
 static bool glideRatioRequired = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
 static uint8_t glideRatioSampleTimeFrame = 5;
 
+typedef struct glideFunctionPerformanceStats_s {
+    timeUs_t minExecutionTimeUs;
+    timeUs_t maxExecutionTimeUs;
+    timeUs_t totalExecutionTimeUs;
+    uint32_t sampleCount;
+} glideFunctionPerformanceStats_t;
+
+static glideFunctionPerformanceStats_t glideRatioPerformanceStats;
+static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats);
+static void recordGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats, timeUs_t executionTimeUs);
+static void publishGlideFunctionPerformanceStats(void);
+
 static statistic_t stats;
 
 static timeUs_t resumeRefreshAt = 0;
@@ -1919,6 +1931,8 @@ static void updateGlideRatioCalculation(void) {
         return;  // Skip calculation if not required by any OSD element - Shouldn't happen, but just in case
     }
 
+    const timeUs_t startTime = micros();
+
     static uint8_t glideRatioBufferIndex;
     static timeMs_t glideLastSampleTime;
     static uint8_t currentSampleCount;
@@ -1988,6 +2002,8 @@ static void updateGlideRatioCalculation(void) {
 
         glideRatioBufferIndex = (glideRatioBufferIndex + 1) % activeWindowSamples;
 
+        recordGlideFunctionPerformanceStats(&glideRatioPerformanceStats, micros() - startTime);  // Record performance stats for glide ratio calculation
+        publishGlideFunctionPerformanceStats();  // Publish performance stats for glide ratio calculation
     }
 }
 
@@ -1999,6 +2015,35 @@ static void enableGlideRatioCalculation(void) {
             glideRatioSampleTimeFrame = timeFrame;
         }
         updateGlideRatioCalculation();  // Start calculation immediately when element is enabled
+    }
+}
+
+static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats)
+{
+    stats->minExecutionTimeUs = TIMEUS_MAX;
+    stats->maxExecutionTimeUs = 0;
+    stats->totalExecutionTimeUs = 0;
+    stats->sampleCount = 0;
+}
+
+static void publishGlideFunctionPerformanceStats(void)
+{
+    const int32_t glideRatioAverageUs = glideRatioPerformanceStats.sampleCount ? (int32_t)(glideRatioPerformanceStats.totalExecutionTimeUs / glideRatioPerformanceStats.sampleCount) : 0;
+
+    DEBUG_SET(DEBUG_GLIDE_OSD, 0, glideRatioAverageUs);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 1, glideRatioPerformanceStats.sampleCount ? (int32_t)glideRatioPerformanceStats.minExecutionTimeUs : 0);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)glideRatioPerformanceStats.maxExecutionTimeUs);
+}
+
+static void recordGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats, timeUs_t executionTimeUs)
+{
+    stats->sampleCount++;
+    stats->totalExecutionTimeUs += executionTimeUs;
+    if (executionTimeUs < stats->minExecutionTimeUs) {
+        stats->minExecutionTimeUs = executionTimeUs;
+    }
+    if (executionTimeUs > stats->maxExecutionTimeUs) {
+        stats->maxExecutionTimeUs = executionTimeUs;
     }
 }
 
