@@ -237,6 +237,7 @@ typedef struct glideFunctionPerformanceStats_s {
 } glideFunctionPerformanceStats_t;
 
 static glideFunctionPerformanceStats_t glideRatioPerformanceStats;
+static glideFunctionPerformanceStats_t polarPerformanceStats;
 static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats);
 static void recordGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats, timeUs_t executionTimeUs);
 static void publishGlideFunctionPerformanceStats(void);
@@ -2238,10 +2239,15 @@ static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *
 static void publishGlideFunctionPerformanceStats(void)
 {
     const int32_t glideRatioAverageUs = glideRatioPerformanceStats.sampleCount ? (int32_t)(glideRatioPerformanceStats.totalExecutionTimeUs / glideRatioPerformanceStats.sampleCount) : 0;
+    const int32_t polarAverageUs = polarPerformanceStats.sampleCount ? (int32_t)(polarPerformanceStats.totalExecutionTimeUs / polarPerformanceStats.sampleCount) : 0;
 
     DEBUG_SET(DEBUG_GLIDE_OSD, 0, glideRatioAverageUs);
     DEBUG_SET(DEBUG_GLIDE_OSD, 1, glideRatioPerformanceStats.sampleCount ? (int32_t)glideRatioPerformanceStats.minExecutionTimeUs : 0);
     DEBUG_SET(DEBUG_GLIDE_OSD, 2, (int32_t)glideRatioPerformanceStats.maxExecutionTimeUs);
+
+    DEBUG_SET(DEBUG_GLIDE_OSD, 3, polarAverageUs);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 4, polarPerformanceStats.sampleCount ? (int32_t)polarPerformanceStats.minExecutionTimeUs : 0);
+    DEBUG_SET(DEBUG_GLIDE_OSD, 5, (int32_t)polarPerformanceStats.maxExecutionTimeUs);
 }
 
 static void recordGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats, timeUs_t executionTimeUs)
