@@ -2119,6 +2119,21 @@ static void clampCovarianceDiagonal(void) {
     }
 }
 
+void initializeGlidePolar(void) {
+    polarCoefficientVector.x = 0.0f;
+    polarCoefficientVector.y = 0.0f;
+    polarCoefficientVector.z = 0.0f;
+
+    resetGlideFunctionPerformanceStats(&glideRatioPerformanceStats);
+    resetGlideFunctionPerformanceStats(&polarPerformanceStats);
+
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            polarCovarianceMatrix.m[i][j] = (i == j) ? 1e4f : 0.0f;
+        }
+    }
+}
+
 static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats)
 {
     stats->minExecutionTimeUs = TIMEUS_MAX;
