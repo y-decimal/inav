@@ -3911,6 +3911,20 @@ groups:
         min: 5
         max: 60
         default_value: 10
+      - name: osd_glide_min_speed
+        description: "Minimum speed (in cm/s) your glider can fly. Set to slightly above the stall speed of your glider."
+        field: glide_min_speed
+        type: uint16_t
+        min: 100
+        max: 3000
+        default_value: 500
+      - name: osd_glide_max_speed
+        description: "Maximum speed (in cm/s) your glider can fly during normal glide. Set to slightly below the maximum reasonable speed of your glider."
+        field: glide_max_speed
+        type: uint16_t
+        min: 500
+        max: 6000
+        default_value: 1000
 
   - name: PG_OSD_COMMON_CONFIG
     type: osdCommonConfig_t
