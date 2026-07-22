@@ -1841,14 +1841,24 @@ static bool osdElementEnabled(uint8_t elementID, bool onlyCurrentLayout) {
     return elementEnabled;
 }
 
-static bool isDataValidGlide(void) {
+static bool isDataValidForGlideRatio(void) {
     static timeMs_t lastInvalidTime = 0;
-    const timeMs_t now = millis();
+    static timeMs_t now = 0;
+
+    static float lastAirspeed = 0;
+    static float filteredAirspeed = 0;
+
+    now = millis();
+
+    filteredAirspeed = lastAirspeed * 0.7f + getAirspeedEstimate() * 0.3f;
+    lastAirspeed = filteredAirspeed;
+
 
     if (getThrottlePercent(true) > 10 ||    
         getEstimatedActualVelocity(Z) > 0 ||
         ABS(attitude.values.roll) > 200 ||
-        ABS(attitude.values.pitch) > 300) 
+        ABS(attitude.values.pitch) > 300 ||
+        filteredAirspeed < 500.0f)
     {     
         lastInvalidTime = now;
         return false;
@@ -1935,7 +1945,7 @@ static void updateGlideRatioCalculation(void) {
         newSample.distance_cm = getTotalTravelDistance();
         newSample.altitude_cm = osdGetAltitude();
 
-        if (!isDataValidGlide()) {
+        if (!isDataValidForGlideRatio()) {
             // Conditions not valid for glide ratio, reset sums and sample count
             sumX = 0;
             sumY = 0;
@@ -2231,10 +2241,13 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlideRatioCalculation();  // Ensure glide ratio calculation is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidGlide()) {
+            if (currentGlideRatio > 0.0f && currentGlideRatio < 100.0f && isDataValidForGlideRatio()) {
                 osdFormatCentiNumber(buff + 1, currentGlideRatio * 100.0f, 0, 2, 0, 3, false);
-            } else {
+            } else if (!isDataValidForGlideRatio()) {
                 buff[1] = buff[2] = buff[3] = '-';
+            }
+            else {
+                TEXT_ATTRIBUTES_ADD_BLINK(elemAttr);
             }
             buff[4] = '\0';
             break;
@@ -3316,7 +3329,7 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             uint16_t glideTime = osdGetRemainingGlideTime();
             buff[0] = SYM_GLIDE_MINS;
-            if (glideTime > 0 && isDataValidGlide()) {
+            if (glideTime > 0 && isDataValidForGlideRatio()) {
                 // Maximum value we can show in minutes is 99 minutes and 59 seconds. It is extremely unlikely that glide
                 // time will be longer than 99 minutes. If it is, it will show 99:^^
                 if (glideTime > (99 * 60) + 59) {
@@ -3337,15 +3350,18 @@ static bool osdDrawSingleElement(uint8_t item)
             enableGlideRatioCalculation();
             int32_t altitude = osdGetAltitude();
             buff[0] = SYM_GLIDE_DIST;
-            if (currentGlideRatio <= 0.0f || altitude <= 0 || !isDataValidGlide()) {
+            if (currentGlideRatio > 0.0f && altitude > 0 && isDataValidForGlideRatio()) {
+                int32_t glideRangeCm = (int32_t)(currentGlideRatio * altitude);
+                osdFormatDistanceSymbol(buff + 1, glideRangeCm, 0, 3);
+            }
+            else if (!isDataValidForGlideRatio())
+            {  
                 tfp_sprintf(buff + 1, "%s%c", "---", SYM_BLANK);
                 buff[5] = '\0';
                 break;
             }
-            else
-            {
-                int32_t glideRangeCm = (int32_t)(currentGlideRatio * altitude);
-                osdFormatDistanceSymbol(buff + 1, glideRangeCm, 0, 3);
+            else {
+                TEXT_ATTRIBUTES_ADD_BLINK(elemAttr);
             }
             break;
         }
