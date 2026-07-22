@@ -1879,6 +1879,40 @@ static bool isDataValidForGlideRatio(void) {
     return (now - lastInvalidTime) > 3000;  // Require 3 seconds of valid conditions before considering data valid for glide ratio
 }
 
+static bool isDataValidForPolar(void) {
+    static timeMs_t lastInvalidTime = 0;
+    static timeMs_t lastCallTime = 0;
+    static float lastAirspeed = 0;
+    static float filteredAirspeed = 0;
+    static float lastVerticalSpeed = 0;
+    static float filteredVerticalSpeed = 0;
+
+    const timeMs_t now = millis();
+    const timeMs_t deltaTime = now - lastCallTime;
+    lastCallTime = now;
+
+    filteredAirspeed = lastAirspeed * 0.7f + getAirspeedEstimate() * 0.3f;
+    filteredVerticalSpeed = lastVerticalSpeed * 0.7f + getEstimatedActualVelocity(Z) * 0.3f;
+
+    const float deltaAirspeed = filteredAirspeed - lastAirspeed;
+    const float deltaVerticalSpeed = filteredVerticalSpeed - lastVerticalSpeed;
+
+    const float horizontalAcceleration = deltaAirspeed * 1000.0f / MAX(deltaTime, 1UL);  // cm/s²
+    const float verticalAcceleration = deltaVerticalSpeed * 1000.0f / MAX(deltaTime, 1UL);  // cm/s²
+    lastAirspeed = filteredAirspeed;
+    lastVerticalSpeed = filteredVerticalSpeed;
+
+    if (!isDataValidForGlideRatio() ||
+        fabsf(horizontalAcceleration) > 500 ||  // More than 500cm/s² (3 m/s²) horizontal acceleration
+        fabsf(verticalAcceleration) > 200)      // More than 200cm/s² vertical acceleration
+    {     
+        lastInvalidTime = now;
+        return false;
+    }
+
+    return (now - lastInvalidTime) > 1000;  // Require 1 second of valid conditions before considering data valid for polar calculation
+}
+
 
 // Linear regression: calculate glide ratio from position samples
 // Returns glide ratio (horizontal distance per 1 unit vertical descent)
