@@ -2669,14 +2669,13 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_RATE:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkRate > 0 && minSinkRate < 1000) {
-                buff[0] = 'S';
+            buff[0] = 'S';
+            if (minSinkRate > 10.0f && minSinkRate < 1000.0f) {
                 osdFormatVerticalSpeedStr(buff + 1, minSinkRate);
             } else {
                 buff[1] = buff[2] = buff[3] = '-';
                 buff[4] = osdVerticalSpeedUnitSymbol();
             }
-
             buff[5] = '\0';
             break;
         } 
@@ -2684,7 +2683,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_MIN_SINK_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (minSinkSpeed > 0 && minSinkSpeed < 5000) {
+            if (minSinkSpeed > 10.0f && minSinkSpeed < 5000.0f) {
                osdFormatVelocityStr(buff, (int32_t)minSinkSpeed, OSD_SPEED_TYPE_AIR, false);
            } else {
                 buff[0] = buff[1] = buff[2] = buff[3] = '-';
@@ -2698,8 +2697,8 @@ static bool osdDrawSingleElement(uint8_t item)
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
             buff[0] = SYM_GLIDESLOPE;
-            if (bestGlideRatio > 0.0f && bestGlideRatio < 100.0f) {
-                buff[1] = ' ';
+            buff[1] = ' ';
+            if (bestGlideRatio > 1.0f && bestGlideRatio < 100.0f) {
                 osdFormatCentiNumber(buff + 2, (int32_t)(bestGlideRatio * 100.0f), 0, 2, 0, 3, false);
             } else {
                 buff[2] = buff[3] = buff[4] = '-';
@@ -2711,7 +2710,7 @@ static bool osdDrawSingleElement(uint8_t item)
     case OSD_BEST_GLIDE_SPEED:
         {
             enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
-            if (bestGlideSpeed > 0 && bestGlideSpeed < 7500) {
+            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 7500.0f) {
                 osdFormatVelocityStr(buff, (int32_t)bestGlideSpeed, OSD_SPEED_TYPE_AIR, false);
             } else {
                 buff[0] = buff[1] = buff[2] = buff[3] = '-';
