@@ -2315,6 +2315,40 @@ static void updateBestGlideRatioAndSpeed(void) {
     }
 }
 
+static void refreshGlidePolar(void) {
+
+    static timeMs_t lastUpdateTime = 0;
+    const timeMs_t currentTime = millis();
+
+    if (!isDataValidForPolar() || (currentTime - lastUpdateTime < POLAR_UPDATE_INTERVAL_MS)) {
+        return;  // Data not valid for glide conditions, skip
+    }
+
+    const timeUs_t startTimeUs = micros();
+
+    const float currentAirSpeed = getAirspeedEstimate();
+    const float currentSinkRate = -getEstimatedActualVelocity(Z);  // Sink rate is positive downwards, so negate Z velocity
+
+    updateGlidePolarData(currentAirSpeed, currentSinkRate);
+    updateMinimumSinkRateAndSpeed();
+    updateBestGlideRatioAndSpeed();
+
+    lastUpdateTime = currentTime;
+
+    recordGlideFunctionPerformanceStats(&polarPerformanceStats, micros() - startTimeUs);
+    publishGlideFunctionPerformanceStats();
+}
+
+static void enableGlidePolarDataCollection(void) {
+    if (!polarRequired) {
+        polarRequired = true;
+        minGlideAirSpeed = (float)osdConfig()->glide_min_speed;
+        maxGlideAirSpeed = (float)osdConfig()->glide_max_speed;
+        initializeGlidePolar();  // Reset polar data when enabling
+        refreshGlidePolar();  // Start data collection immediately when element is enabled
+    }
+}
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     uint16_t pos = osdLayoutsConfig()->item_pos[currentLayout][item];
@@ -6354,6 +6388,10 @@ static void osdRefresh(timeUs_t currentTimeUs)
     
     if (glideRatioRequired) {
         updateGlideRatioCalculation();
+    }
+
+    if (polarRequired) {
+        refreshGlidePolar();
     }
 
 #ifdef USE_CMS
