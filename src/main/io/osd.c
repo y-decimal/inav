@@ -194,6 +194,13 @@ typedef struct statistic_s {
 #define GLIDE_RATIO_SAMPLE_BUFFER_SIZE 60  // Fixed glide buffer samples for up to 1 Hz at 60 seconds
 #define GLIDE_RATIO_MAX_SAMPLE_RATE_HZ 4
 
+#define POLAR_UPDATE_INTERVAL_MS 2000       // Update polar data every 2 seconds
+#define POLAR_RLS_FORGETTING_FACTOR 0.995f  // Forgetting factor
+#define POLAR_RLS_DENOM_EPS 1e-6f           // Small regularizer to avoid division by zero
+#define INITIAL_COVARIANCE_DIAGONAL 1e4f    // Initial covariance diagonal magnitude (large -> fast initial learning)
+#define COV_DIAG_MIN 1e-6f                  // Clamp bounds for covariance diagonal to avoid numerical blowup
+#define COV_DIAG_MAX 1e12f                  // Clamp bounds for covariance diagonal to avoid numerical blowup
+
 typedef struct glidePositionSample_s {
     uint32_t distance_cm;    // Total travel distance
     int32_t altitude_cm;     // Altitude
@@ -208,6 +215,19 @@ static glidePositionSample_t glideBuffer[GLIDE_RATIO_SAMPLE_BUFFER_SIZE];
 static float currentGlideRatio = 0.0f;
 static bool glideRatioRequired = false; // Whether any glide element is enabled, used to determine whether glide ratio calculation needs to be performed
 static uint8_t glideRatioSampleTimeFrame = 5;
+
+static bool polarRequired = false; // Whether any polar element is enabled, used to determine whether polar calculation needs to be performed
+
+fpVector3_t polarCoefficientVector;
+fpMat3_t polarCovarianceMatrix;
+
+static float minGlideAirSpeed = 0; // Minimum airspeed in cm/s, dynamically measured in flight
+static float maxGlideAirSpeed = 0; // Maximum airspeed in cm/s, dynamically measured in flight
+
+static float minSinkRate = 10000.0f; // Minimum sink rate in cm/s
+static float minSinkSpeed = 0.0f; // Minimum sink speed in cm/s
+static float bestGlideRatio = 0.0f;
+static float bestGlideSpeed = 0.0f; // Best glide speed in cm/s
 
 typedef struct glideFunctionPerformanceStats_s {
     timeUs_t minExecutionTimeUs;
