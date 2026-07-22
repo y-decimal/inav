@@ -2106,6 +2106,19 @@ static inline fpVector3_t buildRegressorFromRawAirspeed(float airspeed) {
     return output;
 }
 
+static inline float clampGlideSpeed(float speed)
+{
+    return constrainf(speed, minGlideAirSpeed, maxGlideAirSpeed);
+}
+
+// Utility: clamp covariance diagonal for stability 
+static void clampCovarianceDiagonal(void) {
+    for (int i = 0; i < 3; ++i) {
+        if (polarCovarianceMatrix.m[i][i] < COV_DIAG_MIN) polarCovarianceMatrix.m[i][i] = COV_DIAG_MIN;
+        if (polarCovarianceMatrix.m[i][i] > COV_DIAG_MAX) polarCovarianceMatrix.m[i][i] = COV_DIAG_MAX;
+    }
+}
+
 static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats)
 {
     stats->minExecutionTimeUs = TIMEUS_MAX;
