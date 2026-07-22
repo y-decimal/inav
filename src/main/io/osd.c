@@ -737,6 +737,67 @@ static void osdFormatAltitudeStr(char *buff, int32_t alt)
     }
 }
 
+
+static char osdVelocityUnitSymbol(void)
+{
+    switch ((osd_unit_e)osdConfig()->units) {
+    case OSD_UNIT_UK:
+        FALLTHROUGH;
+    case OSD_UNIT_METRIC_MPH:
+        FALLTHROUGH;
+    case OSD_UNIT_IMPERIAL:
+        return SYM_MPH;
+    case OSD_UNIT_GA:
+        return SYM_KT;
+    case OSD_UNIT_METRIC:
+    default:
+        return SYM_KMH;
+    }
+}
+
+static char osdVerticalSpeedUnitSymbol(void)
+{
+    switch ((osd_unit_e)osdConfig()->units) {
+    case OSD_UNIT_UK:
+        FALLTHROUGH;
+    case OSD_UNIT_IMPERIAL:
+        return SYM_FTS;
+    case OSD_UNIT_GA:
+        return SYM_100FTM;
+    case OSD_UNIT_METRIC_MPH:
+        FALLTHROUGH;
+    case OSD_UNIT_METRIC:
+    default:
+        return SYM_MS;
+    }
+}
+
+static void osdFormatVerticalSpeedStr(char *buff, int32_t vel)
+{
+    int32_t value = vel;
+    char suffix = osdVerticalSpeedUnitSymbol();
+
+    switch ((osd_unit_e)osdConfig()->units) {
+    case OSD_UNIT_UK:
+        FALLTHROUGH;
+    case OSD_UNIT_IMPERIAL:
+        value = CENTIMETERS_TO_CENTIFEET(value);
+        break;
+    case OSD_UNIT_GA:
+        value = CENTIMETERS_TO_FEET(value * 60);
+        break;
+    case OSD_UNIT_METRIC_MPH:
+        FALLTHROUGH;
+    case OSD_UNIT_METRIC:
+    default:
+        break;
+    }
+
+    osdFormatCentiNumber(buff, value, 0, 1, 0, 3, false);
+    buff[3] = suffix;
+    buff[4] = '\0';
+}
+
 static void osdFormatTime(char *buff, uint32_t seconds, char sym_m, char sym_h)
 {
     uint32_t value = seconds;
@@ -2597,6 +2658,60 @@ static bool osdDrawSingleElement(uint8_t item)
                 TEXT_ATTRIBUTES_ADD_BLINK(elemAttr);
             }
             buff[4] = '\0';
+            break;
+        }
+
+    case OSD_MIN_SINK_RATE:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            buff[0] = 'S';
+            if (minSinkRate > 10.0f && minSinkRate < 1000.0f) {
+                osdFormatVerticalSpeedStr(buff + 1, minSinkRate);
+            } else {
+                buff[1] = buff[2] = buff[3] = '-';
+                buff[4] = osdVerticalSpeedUnitSymbol();
+            }
+            buff[5] = '\0';
+            break;
+        } 
+
+    case OSD_MIN_SINK_SPEED:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            if (minSinkSpeed > 10.0f && minSinkSpeed < 5000.0f) {
+               osdFormatVelocityStr(buff, (int32_t)minSinkSpeed, OSD_SPEED_TYPE_AIR, false);
+           } else {
+                buff[0] = buff[1] = buff[2] = buff[3] = '-';
+                buff[4] = osdVelocityUnitSymbol();
+            }
+            buff[5] = '\0';
+            break;
+        }
+
+    case OSD_BEST_GLIDE_RATIO:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            buff[0] = SYM_GLIDESLOPE;
+            buff[1] = ' ';
+            if (bestGlideRatio > 1.0f && bestGlideRatio < 100.0f) {
+                osdFormatCentiNumber(buff + 2, (int32_t)(bestGlideRatio * 100.0f), 0, 2, 0, 3, false);
+            } else {
+                buff[2] = buff[3] = buff[4] = '-';
+            }
+            buff[5] = '\0';
+            break;
+        }
+    
+    case OSD_BEST_GLIDE_SPEED:
+        {
+            enableGlidePolarDataCollection();  // Ensure polar data collection is running if this element is enabled
+            if (bestGlideSpeed > 0.0f && bestGlideSpeed < 7500.0f) {
+                osdFormatVelocityStr(buff, (int32_t)bestGlideSpeed, OSD_SPEED_TYPE_AIR, false);
+            } else {
+                buff[0] = buff[1] = buff[2] = buff[3] = '-';
+                buff[4] = osdVelocityUnitSymbol();
+            }
+            buff[5] = '\0';
             break;
         }
 
