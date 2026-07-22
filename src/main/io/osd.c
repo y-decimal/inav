@@ -2097,6 +2097,15 @@ static inline float getActualAirspeedFromNormalizedWithinGlideSpeedRange(float n
     // return normalizedSpeed;
 }
 
+static inline fpVector3_t buildRegressorFromRawAirspeed(float airspeed) {
+    fpVector3_t output;
+    float normalizedVelocity = normalizeSpeedWithingGlideSpeedRange(airspeed);
+    output.x = 1.0f;
+    output.y = normalizedVelocity;
+    output.z = normalizedVelocity * normalizedVelocity;
+    return output;
+}
+
 static void resetGlideFunctionPerformanceStats(glideFunctionPerformanceStats_t *stats)
 {
     stats->minExecutionTimeUs = TIMEUS_MAX;
